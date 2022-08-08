@@ -1,6 +1,6 @@
 # Nextflow Reference Based Assembly Pipeline
 
-This pipeline automates the process of creating a reference-based assembly pipeline from Illumina NGS Data. It supports the processing of both typical and amplicon sequencing approaches (depending on the options provided).
+This pipeline automates the process of creating a reference-based assembly from Illumina NGS Data. It supports the processing of both typical and amplicon sequencing approaches (depending on the options provided).
 
 ## Technical Considerations
 Some aspects of this analysis are important to consider and understand when interpretting the output.
