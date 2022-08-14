@@ -37,6 +37,8 @@ OPTIONAL:
     --minCov INT - The minimum coverage below which a position will be masked [Default = 20]
     
     --threads INT - the number of threads that can be use to run pipeline tools in parallel
+
+    --minLen INT - the minimum length of a read to keep post trimming [Default = 75bp]
     """
 }
 
@@ -75,6 +77,7 @@ params.threads = 1
 params.picardLoc = false
 params.abraLoc = false
 params.minCov = 20
+params.minLen = 75
 params.host_bt2_index = false
 params.host_reference = false
 
@@ -255,7 +258,7 @@ workflow {
     QCReport( inputFiles_ch, params.output, "FASTQC-Pre-Processing", params.threads )
 
     // Perform adapter and quality trimming with trimmomatic.
-    Trimming( inputFiles_ch, params.output, adapters )
+    Trimming( inputFiles_ch, params.output, adapters, params.minLen )
 
     // Use FASTQC to perform a QC check on the trimmed reads
     QCReport_Trimmed( Trimming.out[0], params.output, "FASTQC-Trimmed", params.threads )

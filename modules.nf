@@ -69,7 +69,8 @@ process Trimming {
         val outDir
         // The adapter file in fasta format
         file adapters
-
+        // Minimum sequence length to keep
+        val minLen
     output:
         // Tuple containing the file basename and the trimmed forward and reverse reads
         tuple val(base), file("${base}_1.trimmed.fq.gz"), file("${base}_2.trimmed.fq.gz")
@@ -100,7 +101,7 @@ process Trimming {
 
     trimmomatic PE ${R1} ${R2} ${base}_1.trimmed.fq ${base}_1.unpaired.fq \
     ${base}_2.trimmed.fq ${base}_2.unpaired.fq ILLUMINACLIP:${adapters}:2:30:10:1:true \
-    LEADING:5 TRAILING:5 SLIDINGWINDOW:4:20 MINLEN:75
+    LEADING:5 TRAILING:5 SLIDINGWINDOW:4:20 MINLEN:${minLen}
     
     gzip ${base}_1.trimmed.fq ${base}_1.unpaired.fq ${base}_2.trimmed.fq ${base}_2.unpaired.fq
     """
