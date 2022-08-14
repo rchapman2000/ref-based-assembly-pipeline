@@ -13,7 +13,7 @@ As well, the pipeline steps are variable depending on the specified
 parameters to meet difference analysis needs. These include a primer
 clipping step for amplicon sequencing, and a host read removal step.
 
-USAGE: nextflow run main.nf [options] --input INPUT_DIR --output OUTPUT_DIR --ref REFERENCE_FASTA --abraLoc PATH_TO_ABRA2_JAR [--swift PRIMER_MASTER_FILE | --picardLoc PATH_TO_PICARD_JAR]
+USAGE: nextflow run main.nf [options] --input INPUT_DIR --output OUTPUT_DIR --ref REFERENCE_FASTA
 OPTIONS:
 
 --input INPUT_DIR - [Required] A directory containing paired-end fastq files
@@ -22,14 +22,11 @@ OPTIONS:
 
 --reference REFERENCE_FASTA - [Required] A reference genome to align reads to.
 
---abraLoc PATH_TO_ABRA2_JAR - [Required] The path to the abra2 jar file used for realignment.
-
-ONE OF THE FOLLOWING IS REQUIRED:
-    --swift PRIMER_MASTER_FILE - tell the pipeline to perform primer clipping based on the supplied masterfile
-    
-    --picardLoc PATH_TO_PICARD_JAR  - The path to the picard jar file to be used for read deduplication
 
 OPTIONAL:
+    
+    --swift PRIMER_MASTER_FILE - tell the pipeline to perform primer clipping based on the supplied masterfile
+
     --host_reference HOST_REF_FASTA - a fasta file containing a host reference sequence. Supplying this option will require a bowtie2 index to be built
 
     --host_bt2_index INDEX_DIRECTORY - To save time, an existing bowtie2 index can be supplied. Must be in its own directory
@@ -74,8 +71,6 @@ params.reference = false
 params.output = false
 params.swift = false
 params.threads = 1
-params.picardLoc = false
-params.abraLoc = false
 params.minCov = 20
 params.minLen = 75
 params.host_bt2_index = false
@@ -130,6 +125,7 @@ outDir = ''
 if (params.output == false) {
     // If the parameter is not set, notify the user and exit.
     println "ERROR: No output directory provided. Pipeline requires an output directory."
+    exit(1)
 }
 else {
     // If the parameter is set, ensure that the directory provided ends
@@ -292,7 +288,7 @@ workflow {
     // If the user supplied the swift option
     if (params.swift) {
         // Perform realignment to improve indel quality
-        Realignment( Bowtie2Alignment.out[0], params.output, params.abraLoc, refData, params.threads ) 
+        Realignment( Bowtie2Alignment.out[0], params.output, refData, params.threads ) 
         
         // Perform primer clipping using primerclip
         SwiftPrimerClip( Realignment.out, primerfile, params.output, params.threads )
@@ -303,10 +299,10 @@ workflow {
     // The user did not supply the swift option
     else {
         // Mark duplicates using picard
-        MarkDuplicates( Bowtie2Alignment.out[0], params.output, params.picardLoc )
+        MarkDuplicates( Bowtie2Alignment.out[0], params.output )
 
         // Perform Realignment to improve indel quality
-        Realignment( MarkDuplicates.out, params.output, params.abraLoc, refData, params.threads ) 
+        Realignment( MarkDuplicates.out, params.output, refData, params.threads ) 
 
         // Call and filter variants
         CallVariants( Realignment.out, baseDir, params.output, refData, params.minCov )

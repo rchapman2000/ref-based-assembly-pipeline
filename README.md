@@ -27,13 +27,25 @@ conda env create -f environment.yml
 # Activate the conda environment
 conda activate RefBasedAssenmbly
 ```
+### Updating the Pipeline
+If you already have the pipeline installed, you can update it using the following commands:
+```
+# Navigate to your installation directory
+cd ref-based-assembly-pipeline
 
-You must also install [Abra2 v2.23](https://github.com/mozack/abra2/releases/tag/v2.23) and [Picard latest release)](https://github.com/broadinstitute/picard/)
+# Use git pull to get the lastest update
+git pull
+
+# Activate the conda environment and use the environment.yml file to download updates
+conda activate RefBasedAssembly
+conda env update --file environment.yml --prune
+```
+
 ## Usage
 To run the pipeline, use the following command:
 ```
 # You must either be in the same directory as the main.nf file or reference the file location.
-nextflow run main.nf [options] --input INPUT_DIR --output OUTPUT_DIR --ref REFERENCE_FASTA --abraLoc PATH_TO_ABRA2_JAR [--swift PRIMER_MASTER_FILE | --picardLoc PATH_TO_PICARD_JAR]
+nextflow run main.nf [options] --input INPUT_DIR --output OUTPUT_DIR --ref REFERENCE_FASTA
 ```
 
 ### Options

@@ -235,8 +235,6 @@ process MarkDuplicates {
         tuple val(base), file(bam)
         // The output directory name
         val outDir
-        // The path to the picard jar file
-        val picardLoc
 
     output:
         // Tuple contains the file basename and alignment bam file with
@@ -256,7 +254,7 @@ process MarkDuplicates {
     """
     #!/bin/bash
 
-    java -jar ${picardLoc} MarkDuplicates I=${bam} \
+    picard MarkDuplicates I=${bam} \
     O=${base}-align-nodups.bam M=${base}-dup-metrics.txt ASSUME_SORT_ORDER=coordinate \
     REMOVE_DUPLICATES=true
     """
@@ -269,8 +267,6 @@ process Realignment {
         tuple val(base), file(bam)
         // The output directory name
         val outDir
-        // The path to the abra2 jar file
-        val abraLoc
         // Tuple contains the reference file name and reference fasta file
         tuple val(refName), file(ref)
         // The number of threads provided
@@ -295,7 +291,7 @@ process Realignment {
 
     samtools index ${bam}
 
-    java -Xmx8g -jar ${abraLoc} --in ${bam} --out ${base}-realigned.bam --ref ${ref} --threads ${threads}
+    abra2 --in ${bam} --out ${base}-realigned.bam --ref ${ref} --threads ${threads}
 
     samtools sort -@ ${threads} ${base}-realigned.bam > ${base}-realigned-sorted.bam
     """
