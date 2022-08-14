@@ -215,7 +215,7 @@ else {
         }
     }
     // If the user supplied the --host_bt2_index
-    else {
+    else if (params.host_bt2_index != false) {
         if (!(file(params.host_bt2_index).exists())) {
             // If the index provided does not exist, notify the user and exit.
             println "Error: ${params.host_bt2_idx} does not exist."
