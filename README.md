@@ -45,7 +45,7 @@ conda env update --file environment.yml --prune
 To run the pipeline, use the following command:
 ```
 # You must either be in the same directory as the main.nf file or reference the file location.
-nextflow run main.nf [options] --input INPUT_DIR --output OUTPUT_DIR --ref REFERENCE_FASTA
+nextflow run main.nf [options] --input INPUT_DIR --output OUTPUT_DIR --reference REFERENCE_FASTA
 ```
 
 ### Options
