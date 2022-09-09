@@ -1,10 +1,87 @@
+// Creates a parameters file and a summary file to 
+// be added to later
+process Setup {
+    input:
+        // The name of the reference supplied (for use
+        // in the parameters file)
+        val refName
+        // The minimum read length allowed post trimmming (for
+        // use in the parameters file)
+        val minLen
+        // The minimum coverage depth used for masking
+        // the consensus genome.
+        val minCov
+        // The name of the primer file if supplied.
+        // If no file was supplied, the value will be NONE
+        val primerFileName
+        // The name of the host reference file or index
+        // if supplied. If not supplied, the value will 
+        // be NONE.
+        val hostRefName
+        // The header to write to the summary file.
+        val summaryHeader
+        // The output directory to be used.
+        file outDir
+        
+    output:
+        // The parameters file created.
+        file "analysis-parameters.txt"
+        // The blank summary file to be added to.
+        file "stats-summary.csv"
+
+    publishDir "${outDir}", mode: 'copy'
+
+    script:
+    /*
+    Creates a parameters file (in case the user needs to look back at how they ran the analysis)
+    as well as a blank summary file, which will later be populated with data from each
+    sample.
+
+    The parameters file contains:
+        1. The name of the reference supplied
+        2. The minimum read length allowed after trimmming
+        3. The minimum coverage threshold used for masking
+        5. The name of the primer file (if provided)
+        6. The name of the host reference used (if provided)
+
+    The summary file will always contain:
+        1. The sample
+        2. Raw Reads
+        3. Reads after trimming
+        4. Mapped reads
+        5. SNPs passing filtering
+        6. Indels passing filtering
+        7. sites masked
+        8. coverage
+    As well, depending on the user's options, the summary file may contain:
+        - Reads after host removal
+        - mapped, deduped reads
+        - mapped, clipped reads
+    */
+    """
+    #!/bin/bash
+
+    touch analysis-parameters.txt
+
+    echo "Minimum Read Length Allowed : ${minLen} bp" >> analysis-parameters.txt
+    echo "Minimum Coverage Allowed : ${minCov}" >> analysis-parameters.txt
+    echo "Reference Supplied : ${refName}" >> analysis-parameters.txt
+    echo "Primers Supplied : ${primerFileName}" >> analysis-parameters.txt
+    echo "Host Removal : ${hostRefName}" >> analysis-parameters.txt
+
+    touch stats-summary.csv
+
+    echo "${summaryHeader}" > stats-summary.csv
+    """
+}
+
 // Builds a bowtie2 index for a provided reference file
 process IndexReference {
     input:
         // Tuple contains the reference name and reference file.
         tuple val(refName), file(ref)
-        // The name of the output directory
-        val outDir
+        // The output directory
+        file outDir
         // The number of threads provided
         val threads
 
@@ -33,8 +110,8 @@ process QCReport {
     input:
         // Tuple contains the file basename as well as the paired-end read files
         tuple val(base), file(F1), file(F2)
-        // The name of the output directory
-        val outDir
+        // The output directory
+        file outDir
         // The name of the directory to place the fastqc output into (allows
         // for this command to be used multiple times and to separate the output
         // i.e. pre-processed-reads vs trimmed-reads.)
@@ -46,7 +123,7 @@ process QCReport {
         // The directory cotaining the fastqc files produced.
         file("${base}")
     
-    publishDir "${outDir}${dirName}/", mode: 'copy'
+    publishDir "${outDir}/${dirName}/", mode: 'copy'
 
     // Creates a Directory and then runs fastqc on a set of reads.
     script:
@@ -65,8 +142,8 @@ process Trimming {
     input: 
         // Tuple cotains the file basename as well as the paired-end read files.
         tuple val(base), file(R1), file(R2)
-        // The name of the output directory
-        val outDir
+        // The output directory
+        file outDir
         // The adapter file in fasta format
         file adapters
         // Minimum sequence length to keep
@@ -76,12 +153,17 @@ process Trimming {
         tuple val(base), file("${base}_1.trimmed.fq.gz"), file("${base}_2.trimmed.fq.gz")
         // Tuple containing the unpaired read files.
         tuple file("${base}_1.unpaired.fq.gz"), file("${base}_2.unpaired.fq.gz")
+        // The summary string containing the raw and trimmed read counts for the paired-end sample.
+        env summary
 
-    publishDir "${outDir}${base}-Processed-Reads", mode: 'copy'
+    publishDir "${outDir}/${base}-Processed-Reads", mode: 'copy'
 
     script:
     /*
-    Uses trimmomatic to trim the read files.
+    The number of raw reads in the forward and reverse files are grabbed
+    and used to calculate the total raw reads.
+
+    Then, trimmomatic is used to trim the read files.
     Trimmomatic performs trimming steps in the order provided in the 
     command line. Our steps:
     1. ILLUMINACLIP: Removes illumina adapters
@@ -95,15 +177,32 @@ process Trimming {
 
     Prinseq (used in the following process) cannot take gzipped reads as input. Thus,
     only the unpaired reads are gzipped to save space.
+
+    Finally, the forward and reverse reads post trimming are grabbed and used
+    to calculate the total trimmed reads.
+
+    The sample, raw reads, and trimmed reads are added to the summary string.
     */
     """
     #!/bin/bash
+
+    raw_reads_1=\$((\$(gunzip -c ${R1} | wc -l)/4))
+    raw_reads_2=\$((\$(gunzip -c ${R1} | wc -l)/4))
+
+    total_raw=\$((\$raw_reads_1 + \$raw_reads_2))
 
     trimmomatic PE ${R1} ${R2} ${base}_1.trimmed.fq ${base}_1.unpaired.fq \
     ${base}_2.trimmed.fq ${base}_2.unpaired.fq ILLUMINACLIP:${adapters}:2:30:10:1:true \
     LEADING:5 TRAILING:5 SLIDINGWINDOW:4:20 MINLEN:${minLen}
     
     gzip ${base}_1.trimmed.fq ${base}_1.unpaired.fq ${base}_2.trimmed.fq ${base}_2.unpaired.fq
+
+    trimmed_reads_1=\$((\$(gunzip -c ${base}_1.trimmed.fq.gz | wc -l)/4))
+    trimmed_reads_2=\$((\$(gunzip -c ${base}_2.trimmed.fq.gz | wc -l)/4))
+
+    total_trimmed=\$((\$trimmed_reads_1 + \$trimmed_reads_2))
+
+    summary="${base},\$total_raw,\$total_trimmed"
     """
         
 }
@@ -114,17 +213,21 @@ process Bowtie2Alignment {
         // Tuple contains the file basename and paired-end reads
         tuple val(base), file(R1), file(R2)
         // The output directory name
-        val outDir
+        file outDir
         // Tuple contains the bowtie2 index directory and the name of the reference used
         tuple file(refDir), val(refName)
         // The number of threads provided.
         val threads
+        // The existing statistics string to be added to.
+        val existingSummary
 
     output:
         // Tuple contains the file basename and the alignment in a sorted bam file
         tuple val(base), file("${base}.bam")
         // A directory containing the alignment in sam format.
         file "${base}-align.sam"
+        // The summary string containing the number of mapped reads
+        env summary
     
     publishDir "${outDir}", mode: 'copy'
 
@@ -134,6 +237,9 @@ process Bowtie2Alignment {
     to ensure the reads are aligne without gaps.
 
     The alignment is then converted to bam format and sorted using samtools.
+
+    Samtools is then used to grab the number of mapped reads from the alignment,
+    and this is added to the summary string.
     */
     """
     #!/bin/bash
@@ -141,6 +247,10 @@ process Bowtie2Alignment {
     bowtie2 --threads ${threads} -x ${refDir}/${refName} -1 ${R1} -2 ${R2} --local -S ${base}-align.sam
 
     samtools view -b ${base}-align.sam | samtools sort > ${base}.bam
+
+    mapped_reads=\$(samtools view -F 0x04 -c ${base}.bam)
+
+    summary="${existingSummary},\$mapped_reads"
     """
 }
 
@@ -150,19 +260,22 @@ process HostReadRemoval {
         // Tuple contains the file basename and paired-end reads
         tuple val(base), file(R1), file(R2)
         // The output directory name
-        val outDir
+        file outDir
         // Tuple contains the bt2 index directory and basename of the index files.
         tuple file(refDir), val(refName)
         // The number of threads provided.
         val threads
-
+        // The existing statistics string to be added to.
+        val existingSummary
     output:
         // Tuple contains the file basename and the paired-end read files with host reads removed.
         tuple val(base), file("${base}_host_removed_1.fq.gz"), file("${base}_host_removed_2.fq.gz")
         // A directory containing the alignment to the host file.
         file "host-reads/${base}-host.sam"
+        // The summary string containing the number of reads post host removal
+        env summary
     
-    publishDir "${outDir}${base}-Processed-Reads", mode: 'copy'
+    publishDir "${outDir}/${base}-Processed-Reads", mode: 'copy'
 
     script:
     /*
@@ -173,7 +286,10 @@ process HostReadRemoval {
     The unaligned read files are then renamed to give them the typical paired end
     read name scheme.
 
-    Finally, the reads are gzipped to preserve space.
+    The reads are gzipped to preserve space.
+
+    Finally, the number of forward and reverse reads are grabbed and used to calculate
+    the total number of reads post host removal. This value is added to the summary string.
     */
     """
     #!/bin/bash
@@ -184,6 +300,13 @@ process HostReadRemoval {
     mv ${base}_host_removed.2 ${base}_host_removed_2.fq
 
     gzip ${base}_host_removed_1.fq ${base}_host_removed_2.fq
+
+    nonHost_reads_1=\$((\$(gunzip -c ${base}_host_removed_1.fq.gz | wc -l)/4))
+    nonHost_reads_2=\$((\$(gunzip -c ${base}_host_removed_2.fq.gz | wc -l)/4))
+
+    total_nonHost=\$((\$nonHost_reads_1 + \$nonHost_reads_2))
+
+    summary="${existingSummary},\$total_nonHost"
     """
 }
 
@@ -195,14 +318,17 @@ process SwiftPrimerClip {
         tuple val(base), file(bam)
         // The primer masterfile for input into primerclip.
         file primersFile
-        // The name of the output directory
-        val outDir
+        // The output directory
+        file outDir
         // THe number of threads provided
         val threads
-
+        // The existing statistics string to be added to.
+        val existingSummary
     output:
         // Tuple contains the file basename and the clipped and sorted bam alignment file.
         tuple val(base), file("${base}-clipped-sorted.bam")
+        // The summary string containing the number of clipped, mapped reads
+        env summary
 
     publishDir "${outDir}", mode: 'copy'
 
@@ -213,8 +339,13 @@ process SwiftPrimerClip {
 
     Then, primerclip is run to softclip primers from the alignment.
 
-    Finally, the primerclip output is converted back to bam format and sorted using
+    The primerclip output is converted back to bam format and sorted using
     samtools.
+
+    Samtools is then used to grab the number of reads from the clipped
+    bam file.
+
+    The number of clipped, mapped reads is added to the summary string.
     */
     """
     #!/bin/bash
@@ -224,9 +355,39 @@ process SwiftPrimerClip {
     primerclip ${primersFile} ${base}-sort.sam ${base}-clip.sam
 
     samtools view -b ${base}-clip.sam | samtools sort -@ ${threads} > ${base}-clipped-sorted.bam
+    
+    clipped_mapped_reads=\$(samtools view -F 0x04 -c ${base}-clipped-sorted.bam)
+
+    summary="${existingSummary},\$clipped_mapped_reads"
     """
 }
 
+/*
+process BedPrimerClip {
+    input:
+        tuple val(base), file(bam)
+
+        file primersFile
+
+        file outDir
+
+        val threads
+
+    output:
+         tuple  val(base), file("${base}-clipped-sorted.bam")
+
+    publishDir "${outDir}", mode: 'copy'
+
+    script:
+    """
+    #!/bin/bash
+
+    samtools sort -@ ${threads} -o ${base}-sorted.bam ${bam}
+
+    samtools index ${base}-sorted.bam
+    """
+}
+*/
 
 // Uses Picard to mark duplicate reads in an alignment.
 process MarkDuplicates {
@@ -234,12 +395,16 @@ process MarkDuplicates {
         // Tuple contains the file basename and alignment bam file
         tuple val(base), file(bam)
         // The output directory name
-        val outDir
-
+        file outDir
+        // The existing summary string.
+        val existingSummary
     output:
         // Tuple contains the file basename and alignment bam file with
         // duplicates removed.
         tuple val(base), file("${base}-align-nodups.bam")
+        // The summary string with the number of deduplicated
+        // mapped reads added.
+        env summary
 
     publishDir "${outDir}", mode: 'copy'
 
@@ -250,6 +415,9 @@ process MarkDuplicates {
         ASSUME_SORT_ORDER=coordinate - tells the tool to assume the file is
                                        sorted by coordinate
         REMOVE_DUPLICATES=true - does to write the duplicates in the output file
+
+    Samtools is then used to grab the number of mapped reads from the deduplicated
+    bam file, and this value is added to the summary string.
     */
     """
     #!/bin/bash
@@ -257,6 +425,10 @@ process MarkDuplicates {
     picard MarkDuplicates I=${bam} \
     O=${base}-align-nodups.bam M=${base}-dup-metrics.txt ASSUME_SORT_ORDER=coordinate \
     REMOVE_DUPLICATES=true
+
+    deduped_mapped_reads=\$(samtools view -F 0x04 -c ${base}-align-nodups.bam)
+
+    summary="${existingSummary},\$deduped_mapped_reads"
     """
 }
 
@@ -266,15 +438,15 @@ process Realignment {
         // Tuple contains the file basename and the alignment bam file
         tuple val(base), file(bam)
         // The output directory name
-        val outDir
+        file outDir
         // Tuple contains the reference file name and reference fasta file
         tuple val(refName), file(ref)
         // The number of threads provided
         val threads
-
     output:
         // Tuple contains the file basename and the realigned and sorted bam file
         tuple val(base), file("${base}-realigned-sorted.bam")
+
     
     publishDir "${outDir}", mode: 'copy'
 
@@ -306,17 +478,20 @@ process CallVariants {
         // The script base directory name (to call python scripts)
         val baseDir
         // The output directory name
-        val outDir
+        file outDir
         // Tuple contains the reference name and reference fasta file
         tuple val(refName), file(ref)
         // The minimum coverage cutoff
         val minCov
-
+        // The existing summary string.
+        val existingSummary
     output:
         // Tuple contains the file basename, alignment bamfile, filtered snp vcf, and filtered indel vcf
         tuple val(base), file(bam), file("${base}-snps-filtered.vcf"), file("${base}-indels-filtered.vcf")
         // Tuple contains the unfiltered vcf and multiallelic filtered vcf files.
         tuple file("${base}.vcf"), file("${base}-biallelic.vcf")
+        // The summary string with the number of snps and indels added.
+        env summary
 
     publishDir "${outDir}", mode: 'copy'
 
@@ -338,6 +513,10 @@ process CallVariants {
     minimum coverage and that are not majority. The alternative and reference
     allele frequencies are calculated by dividing the occurrances (AO = alternative occurrance
     and RO = reference occurance) by the depth.
+
+    The number of snps and indels is determined by grabbing all lines that do not begin with an '#'
+    character (only variant entries do not begin with # in a VCF file). These values are
+    added to the summary string.
     */
     """
     #!/bin/bash
@@ -356,7 +535,12 @@ process CallVariants {
     tabix ${base}-snps.vcf.gz
 
     bcftools view -i "(INFO/DP >= ${minCov}) && ((INFO/AO / INFO/DP) > (INFO/RO / INFO/DP))" ${base}-indels.vcf.gz > ${base}-indels-filtered.vcf
+    num_indels=\$(grep -v "^#" ${base}-indels-filtered.vcf | wc -l)
+
     bcftools view -i "(INFO/DP >= ${minCov}) && ((INFO/AO / INFO/DP) > (INFO/RO / INFO/DP))" ${base}-snps.vcf.gz > ${base}-snps-filtered.vcf
+    num_snps=\$(grep -v "^#" ${base}-snps-filtered.vcf | wc -l)
+
+    summary="${existingSummary},\$num_snps,\$num_indels"
     """
 }
 
@@ -369,16 +553,20 @@ process GenerateConsensus {
         // The name of the base directory
         val baseDir
         // The name of the base directory
-        val outDir
+        file outDir
         // Tuple contains the reference file name and reference file
         tuple val(refName), file(ref)
         // The minimum coverage threshold
         val minCov
-
+        // The existing summary string.
+        val existingSummary
     output:
         // Tuple contains the consensus fasta and the sites that were masked in 
         // a bed file.
         tuple file("${base}-consensus.fasta"), file("${base}-mask-sites.bed")
+        // The summary string with the number of masked positions and coverage
+        // added.
+        env summary
 
     publishDir "${outDir}", mode: 'copy'
 
@@ -397,7 +585,12 @@ process GenerateConsensus {
     the in-house script. 
 
     Finally, the sites we want to keep (those above the minimum coverage threshold) are substracted
-    from the bed file with every site, to give us the sites we want to mask.
+    from the bed file with every site, to give us the low-coverage sites.
+
+    Additionally, there is an interesting case when the sites that fall within a deletion are marked as masked.
+    Because masking is applied first, this will cause an error when applying the variants (as the deletion site will contain 
+    an N character and will not match the VCF reference). Thus, the pipeline uses bcftools to create a bed file for all indel sites,
+    and then subtracts these from the low coverage sites. Now, this results in the sites to mask.
 
     The bedtools maskfasta command is then used to mask the reference at these positions.
 
@@ -405,7 +598,12 @@ process GenerateConsensus {
     because the pileup (and therefore masking) positions do not account for indels, which would
     shift the genomic coordinates (we would end up masking things we did not want to).
 
-    Finally, the fasta is wrapped to make it visually appealing. 
+    The fasta is then wrapped using bioawk to make the sequence one line.
+
+    Finally, the coverage is calculated by grabbing the sequence length using bioawk,
+    and subtracting the masked positions divided by the length from 1 using awk.
+
+    The number of masked sites and coverage are then added to the summary string. 
     */
     """
     #!/bin/bash
@@ -416,7 +614,13 @@ process GenerateConsensus {
     samtools mpileup --no-BAQ -d 100000 -x -A -a -f ${ref} ${bam} > all-sites.pileup
     python3 ${baseDir}/scripts/pileup_to_bed.py -i all-sites.pileup -o all-sites.bed 
 
-    bedtools subtract -a all-sites.bed -b passed-sites.bed > ${base}-mask-sites.bed
+    bedtools subtract -a all-sites.bed -b passed-sites.bed > ${base}-low-cov-sites.bed
+
+    bcftools query -f'%CHROM\t%POS0\t%END\n' ${indels} > indel-sites.bed
+
+    bedtools subtract -a ${base}-low-cov-sites.bed -b indel-sites.bed > ${base}-mask-sites.bed
+
+    num_mask=\$(cat ${base}-mask-sites.bed | wc -l)
 
     bedtools maskfasta -fi ${ref} -bed ${base}-mask-sites.bed -fo masked.fasta
 
@@ -431,5 +635,33 @@ process GenerateConsensus {
     bcftools consensus -f with-snps.fasta ${indels}.gz > with-indels-snps.fasta
     
     bioawk -c fastx '{ gsub(/\\n/,"",seq); print ">${base}"; print \$seq }' with-indels-snps.fasta > ${base}-consensus.fasta
+
+    seq_len=\$(bioawk -c fastx '{ print length(\$seq) }' < ${base}-consensus.fasta)
+
+    coverage=\$(awk -v mask=\$num_mask -v len=\$seq_len 'BEGIN { print (1 - (mask / len)) * 100 }')
+
+    summary="${existingSummary},\$num_mask,\$coverage"
     """
+}
+
+// Writes a line to the summary file for the sample.
+process WriteSummary {
+    input:
+        // Tuple contains the sample basename and forward/reverse reads (the basename
+        // is the only value important to this function).
+        val summary
+        // The output directory.
+        file outDir
+
+    script:
+    /*
+    The summary string containing the statistics collected as the pipeline
+    was run are appended to the summary file.
+    */
+    """
+    #!/bin/bash
+
+    echo "${summary}" >> ${outDir}/stats-summary.csv
+    """  
+
 }

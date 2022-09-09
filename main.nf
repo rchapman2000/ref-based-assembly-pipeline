@@ -25,7 +25,9 @@ OPTIONS:
 
 OPTIONAL:
     
-    --swift PRIMER_MASTER_FILE - tell the pipeline to perform primer clipping based on the supplied masterfile
+    --primers PRIMER_BED_FILE - Supply a .bed file to perform primer clipping using iVAR (Cannot be used with --swift option)
+
+    --swift PRIMER_MASTER_FILE - Supply a masterfile to perform primer clipping using PrimerClip (for SWIFT/IDT Assays) (Cannot be used with --primers option)
 
     --host_reference HOST_REF_FASTA - a fasta file containing a host reference sequence. Supplying this option will require a bowtie2 index to be built
 
@@ -56,6 +58,49 @@ def checkDirectoryEnding (fileName) {
     return fileName
 }
 
+// Function creates the header for the summary file based on the parameters
+// supplied by the user. Because the pipeline dynamically changes based on
+// what the user specifies, the summary file must also be alter to reflect
+// the analysis. This will also make incorporating new modules easier.
+def createSummaryHeader (hostRef, hostIdx, primers, swift) {
+    
+    // The header will always start with the sample.
+    FinalHeader = 'Sample,'
+
+    // The summary sheet will also always contain the Raw and trimmed read counts.
+    FinalHeader = FinalHeader + "Raw Reads,Trimmed Reads,"
+
+    // Next, the user may supply host removal, which would be the next useful
+    // statistic to know. Thus, if a host reference or bowtie2 index is supplied,
+    // add this field to the header.
+    if (hostRef != false || hostIdx != false) {
+        FinalHeader = FinalHeader + "Non-Host Reads,"
+    }
+
+    // Next, the pipeline will also perform alignment. Thus, this the next
+    // useful statistic.
+    FinalHeader = FinalHeader + "Mapped Reads,"
+
+    // After alignment, the user may supply a set of primers to be clipped. Thus,
+    // if the primers or swift parameters have been supplied, a field for the number of
+    // clipped mapped reads will be added.
+    if (primers != false || swift != false) {
+        FinalHeader = FinalHeader + "Clipped Mapped Reads,"
+    }
+    // If not primer clipping has been done, the pipeline will instead perform deduplication.
+    // Thus, a field for the number of deduplicated reads will be added to the
+    // summary file.
+    else {
+        FinalHeader = FinalHeader + "Deduped Mapped Reads,"
+    }
+
+    // Finally, the pipeline will always report the number of SNPs, indels, masking positions,
+    // and coverage.
+    FinalHeader = FinalHeader + "SNPs,Indels,Masked Positions,Coverage"
+
+    return FinalHeader
+}
+
 // If the help parameter is supplied, link display the help message
 // and quit the pipeline
 params.help = false
@@ -70,6 +115,7 @@ params.input = false
 params.reference = false
 params.output = false
 params.swift = false
+params.primers = false
 params.threads = 1
 params.minCov = 20
 params.minLen = 75
@@ -82,6 +128,7 @@ adapters = file("${baseDir}/adapters.fa")
 println "Input Directory: ${params.input}"
 
 // Inports modules
+include { Setup } from './modules.nf'
 include { IndexReference } from './modules.nf'
 // The same module cannot be used more than once,
 // thus it is aliased to be used multiple times.
@@ -92,10 +139,12 @@ include { Trimming } from './modules.nf'
 include { HostReadRemoval } from './modules.nf'
 include { Bowtie2Alignment } from './modules.nf'
 include { SwiftPrimerClip } from './modules.nf'
+//include { BedPrimerClip } from './modules.nf'
 include { MarkDuplicates } from './modules.nf'
 include { Realignment } from './modules.nf'
 include { CallVariants } from './modules.nf'
 include { GenerateConsensus } from "./modules.nf"
+include { WriteSummary } from "./modules.nf"
 
 // Checks the input parameter
 if (params.input == false) {
@@ -131,7 +180,7 @@ else {
     // If the parameter is set, ensure that the directory provided ends
     // in a trailing slash (to keep things consistent throughout) the
     // pipeline code.
-    outDir = checkDirectoryEnding(params.output)
+    outDir = file(checkDirectoryEnding(params.output))
 }
 
 // Checks the reference parameter. For this, we cannot use an
@@ -140,6 +189,7 @@ else {
 // channel would only only have 1 file in it. Thus, we manually parse
 // the reference file into a tuple.
 refData = ''
+refName = ''
 if (params.reference == false) {
     // If the parameter is not set, notify the user and exit.
     println "ERROR: no reference file proivded. Pipeline requires a reference file."
@@ -165,19 +215,49 @@ else {
 }
 
 
-// Process the swift primers parameter.
+// Process the --swift and/or --primers parameters.
 primerfile = ''
-if (params.swift != false) {
-    // If the parameter is provided, check if the file exists.
-    if (file(params.swift).isFile())
-    {
+primerFileName = 'NONE'
+if (params.swift != false && params.primers != false) {
+    // Both the --swift and --primers options cannot be provided. If they are,
+    // notify the user and exit.
+    println "ERROR: Both --primers and --swift were supplied. Only one can be supplied per run. Please adjust the parameters."
+    exit(1)
+}
+else if (params.swift != false) {
+    // If the --swift parameter is provided, check if the file exists.
+    if (file(params.swift).isFile()) {
         // If the file does exist, parse it into
         // a file object.
         primerfile = file(params.swift)
+        primerFileName = primerfile.getName()
     }
     else {
         // If the file does not exist, notify the user and exit.
         println "ERROR: ${params.swift} does not exist."
+        exit(1)
+    }
+}
+else if (params.primers != false) {
+    // If the --primers paramter is provided, check if the file exists.
+    if (file(params.primers).isFile()) {
+        println "UNDER DEVELOPMENT - Exiting"
+        exit(0)
+        // If the file does exist, parse it into
+        // a file object.
+        primerfile = file(params.primers)
+        primerFileName = primerfile.getName()
+
+        // iVar requires a bed file containing primers and coordiantes. Check to ensure
+        // that the provided file ends in .bed, and if not notify the user and exit.
+        if (primerfile.getExtension() != 'bed') {
+            println "ERROR: The primer file ${params.primers} is not a .bed file. iVar requires a bed file containing primer sequence and positions. Please supply a .bed file."
+            exit(1)
+        }
+    }
+    else {
+        // If the file does not exist, notify the user and exit.
+        println "ERROR: ${params.primers} does not exist."
         exit(1)
     }
 }
@@ -189,6 +269,7 @@ if (params.swift != false) {
 // step and the alignment step.
 hostRefData = ''
 hostRefIdxData = ''
+hostRefName = 'NONE'
 if (params.host_reference != false && params.host_bt2_index != false) {
     // If both options are supplied, notify the user and exit.
     println "ERROR: you have specified both a host fasta file and bowtie2 index. Please only supply one."
@@ -217,7 +298,7 @@ else {
     else if (params.host_bt2_index != false) {
         if (!(file(params.host_bt2_index).exists())) {
             // If the index provided does not exist, notify the user and exit.
-            println "Error: ${params.host_bt2_idx} does not exist."
+            println "Error: ${params.host_bt2_index} does not exist."
             exit(1)
         }
         else {
@@ -245,69 +326,95 @@ else {
     }
 }
 
+// Creates the summary header based on the options provided.
+summaryHeader = createSummaryHeader(params.host_reference, params.host_bt2_index, params.primers, params.swift)
+
+// To keep track of the summary, a string will be passed between modules that report
+// metrics. At the end of the module, the metric will be added to the string and
+// returned as output to the next module.
 workflow {
 
+    // Creates a parameters and summary file.
+    Setup( refName, params.minLen, params.minCov, primerFileName, hostRefName, summaryHeader, outDir )
+
     // Index the reference file provided.
-    IndexReference( refData, params.output, params.threads )
+    IndexReference( refData, outDir, params.threads )
     
     // Use FASTQC to perform an initial QC check on the reads
-    QCReport( inputFiles_ch, params.output, "FASTQC-Pre-Processing", params.threads )
+    QCReport( inputFiles_ch, outDir, "FASTQC-Pre-Processing", params.threads )
 
     // Perform adapter and quality trimming with trimmomatic.
-    Trimming( inputFiles_ch, params.output, adapters, params.minLen )
+    Trimming( inputFiles_ch, outDir, adapters, params.minLen )
 
     // Use FASTQC to perform a QC check on the trimmed reads
-    QCReport_Trimmed( Trimming.out[0], params.output, "FASTQC-Trimmed", params.threads )
+    QCReport_Trimmed( Trimming.out[0], outDir, "FASTQC-Trimmed", params.threads )
     
     // If the user supplied a host bowtie2 index
     if (params.host_bt2_index != false) {
         
         // Perform host removal by aligning to the host reference using bowtie2
-        HostReadRemoval( Trimming.out[0], params.output, hostRefIdxData, params.threads)
+        HostReadRemoval( Trimming.out[0], outDir, hostRefIdxData, params.threads, Trimming.out[2])
 
         // Align the non-host reads to the reference using bowtie2
-        Bowtie2Alignment( HostReadRemoval.out[0], params.output, IndexReference.out, params.threads )
+        Bowtie2Alignment( HostReadRemoval.out[0], outDir, IndexReference.out, params.threads, HostReadRemoval.out[2] )
     }
     // If the user supplied a host fasta file
     else if (params.host_reference != false) {
 
         // Index the host reference file.
-        IndexHostReference( hostRefData, params.output, params.threads )
+        IndexHostReference( hostRefData, outDir, params.threads )
         
         // Perform host removal by aligning to the host reference using bowtie2
-        HostReadRemoval( Trimming.out[0], params.output, IndexHostReference.out, params.threads )
+        HostReadRemoval( Trimming.out[0], outDir, IndexHostReference.out, params.threads, Trimming.out[2] )
         
         // Align the non-host reads to the reference using bowtie2
-        Bowtie2Alignment( HostReadRemoval.out[0], params.output, IndexReference.out, params.threads )
+        Bowtie2Alignment( HostReadRemoval.out[0], outDir, IndexReference.out, params.threads, HostReadRemoval.out[2])
     }
     else {
         // Align the reads to the reference using bowtie2
-        Bowtie2Alignment( Trimming.out[0], params.output, IndexReference.out, params.threads )
+        Bowtie2Alignment( Trimming.out[0], outDir, IndexReference.out, params.threads, Trimming.out[2] )
     }
 
     // If the user supplied the swift option
     if (params.swift) {
         // Perform realignment to improve indel quality
-        Realignment( Bowtie2Alignment.out[0], params.output, refData, params.threads ) 
+        Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads)
         
         // Perform primer clipping using primerclip
-        SwiftPrimerClip( Realignment.out, primerfile, params.output, params.threads )
+        SwiftPrimerClip( Realignment.out, primerfile, outDir, params.threads, Bowtie2Alignment.out[2] )
 
         // Call and filter variants
-        CallVariants( SwiftPrimerClip.out, baseDir, params.output, refData, params.minCov )
+        CallVariants( SwiftPrimerClip.out[0], baseDir, outDir, refData, params.minCov, SwiftPrimerClip.out[1] )
     }
+    /*
+
+    UNDER DEVELOPMENT
+
+    else if (params.primers) {
+        // Perform realignment to improve indel quality
+        Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads ) 
+        
+        // Perform primer clipping (UNDER DEVELOPMENT)
+        BedPrimerClip( Realignment.out, primerfile, outDir, params.threads )
+
+        // Call and filter variants
+        CallVariants( IVarPrimerClip.out, baseDir, outDir, refData, params.minCov )
+    }
+    */
     // The user did not supply the swift option
     else {
         // Mark duplicates using picard
-        MarkDuplicates( Bowtie2Alignment.out[0], params.output )
+        MarkDuplicates( Bowtie2Alignment.out[0], outDir, Bowtie2Alignment.out[2] )
 
         // Perform Realignment to improve indel quality
-        Realignment( MarkDuplicates.out, params.output, refData, params.threads ) 
+        Realignment( MarkDuplicates.out[0], outDir, refData, params.threads ) 
 
         // Call and filter variants
-        CallVariants( Realignment.out, baseDir, params.output, refData, params.minCov )
+        CallVariants( Realignment.out, baseDir, outDir, refData, params.minCov, MarkDuplicates.out[1] )
     }
 
     // Generate a consensus from the alignment and variant calling.
-    GenerateConsensus( CallVariants.out[0], baseDir, params.output, refData, params.minCov )
+    GenerateConsensus( CallVariants.out[0], baseDir, outDir, refData, params.minCov, CallVariants.out[2] )
+
+    WriteSummary(GenerateConsensus.out[1], outDir)
 }

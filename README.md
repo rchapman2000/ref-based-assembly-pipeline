@@ -49,7 +49,15 @@ nextflow run main.nf [options] --input INPUT_DIR --output OUTPUT_DIR --reference
 ```
 
 ### Options
-Documentation to be added. To view the list of options, use the following command:
+The pipeline also supports the following optional arguments:
+
+| Option | Type | Description |
+|---|---|---|
+| -- |   |   |
+|   |   |   |
+|   |   |   |
+
+To view the list of options from the commandline, use the following command:
 ```
 nextflow rn main.nf --help
 ```
