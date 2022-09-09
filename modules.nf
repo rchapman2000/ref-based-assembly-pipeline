@@ -175,9 +175,6 @@ process Trimming {
         an average quality less than 20.
     5. MINLEN: Removes reads less than 75 bp long.
 
-    Prinseq (used in the following process) cannot take gzipped reads as input. Thus,
-    only the unpaired reads are gzipped to save space.
-
     Finally, the forward and reverse reads post trimming are grabbed and used
     to calculate the total trimmed reads.
 
