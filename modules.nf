@@ -443,9 +443,13 @@ process Realignment {
         tuple val(refName), file(ref)
         // The number of threads provided
         val threads
+        // The existing summary string
+        val existingSummary
     output:
         // Tuple contains the file basename and the realigned and sorted bam file
         tuple val(base), file("${base}-realigned-sorted.bam")
+
+        env summary
 
     
     publishDir "${outDir}", mode: 'copy'
@@ -466,6 +470,8 @@ process Realignment {
     abra2 --in ${bam} --out ${base}-realigned.bam --ref ${ref} --threads ${threads}
 
     samtools sort -@ ${threads} ${base}-realigned.bam > ${base}-realigned-sorted.bam
+
+    summary="${existingSummary}"
     """
 }
 

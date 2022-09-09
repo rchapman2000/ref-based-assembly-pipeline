@@ -378,10 +378,10 @@ workflow {
     // If the user supplied the swift option
     if (params.swift) {
         // Perform realignment to improve indel quality
-        Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads)
+        Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads, Bowtie2Alignment.out[2])
         
         // Perform primer clipping using primerclip
-        SwiftPrimerClip( Realignment.out, primerfile, outDir, params.threads, Bowtie2Alignment.out[2] )
+        SwiftPrimerClip( Realignment.out[0], primerfile, outDir, params.threads, Realignment.out[1] )
 
         // Call and filter variants
         CallVariants( SwiftPrimerClip.out[0], baseDir, outDir, refData, params.minCov, SwiftPrimerClip.out[1] )
@@ -407,10 +407,10 @@ workflow {
         MarkDuplicates( Bowtie2Alignment.out[0], outDir, Bowtie2Alignment.out[2] )
 
         // Perform Realignment to improve indel quality
-        Realignment( MarkDuplicates.out[0], outDir, refData, params.threads ) 
+        Realignment( MarkDuplicates.out[0], outDir, refData, params.threads, MarkDuplicates.out[1] ) 
 
         // Call and filter variants
-        CallVariants( Realignment.out, baseDir, outDir, refData, params.minCov, MarkDuplicates.out[1] )
+        CallVariants( Realignment.out[0], baseDir, outDir, refData, params.minCov, Realignment.out[1] )
     }
 
     // Generate a consensus from the alignment and variant calling.
