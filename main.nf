@@ -33,11 +33,17 @@ OPTIONAL:
 
     --host_bt2_index INDEX_DIRECTORY - To save time, an existing bowtie2 index can be supplied. Must be in its own directory
 
+    --noPicard - Supplying this option disables the use of picard (which is used by default). Supplying a primer file will do this automatically. [Default = use picard unless primers supplied]
+
     --minCov INT - The minimum coverage below which a position will be masked [Default = 20]
-    
-    --threads INT - the number of threads that can be use to run pipeline tools in parallel
+
+    --minBQ INT - The minimum base call quality for a site to be considered in variant calling and depth-masking [Default = 10]
+
+    --minMapQ INT - The minimum mapping quality for a site to be considered in variant calling and depth-masking [Default = 0]
 
     --minLen INT - the minimum length of a read to keep post trimming [Default = 75bp]
+
+    --threads INT - the number of threads that can be use to run pipeline tools in parallel
     """
 }
 
@@ -62,7 +68,7 @@ def checkDirectoryEnding (fileName) {
 // supplied by the user. Because the pipeline dynamically changes based on
 // what the user specifies, the summary file must also be alter to reflect
 // the analysis. This will also make incorporating new modules easier.
-def createSummaryHeader (hostRef, hostIdx, primers, swift) {
+def createSummaryHeader (hostRef, hostIdx, primers, swift, noPicard) {
     
     // The header will always start with the sample.
     FinalHeader = 'Sample,'
@@ -86,6 +92,10 @@ def createSummaryHeader (hostRef, hostIdx, primers, swift) {
     // clipped mapped reads will be added.
     if (primers != false || swift != false) {
         FinalHeader = FinalHeader + "Clipped Mapped Reads,"
+    }
+    // If the user has supplied the noPicard option, then do not add anything to the summary header.
+    else if (noPicard != false) {
+        FinalHeader = FinalHeader
     }
     // If not primer clipping has been done, the pipeline will instead perform deduplication.
     // Thus, a field for the number of deduplicated reads will be added to the
@@ -119,6 +129,9 @@ params.primers = false
 params.threads = 1
 params.minCov = 20
 params.minLen = 75
+params.minBQ = 10
+params.minMapQ = 0
+params.noPicard = false
 params.host_bt2_index = false
 params.host_reference = false
 
@@ -215,13 +228,21 @@ else {
 }
 
 
-// Process the --swift and/or --primers parameters.
+// Process the --swift, --primers, and/or --noPicard parameters.
 primerfile = ''
 primerFileName = 'NONE'
+picardUsed = 'True'
 if (params.swift != false && params.primers != false) {
     // Both the --swift and --primers options cannot be provided. If they are,
     // notify the user and exit.
     println "ERROR: Both --primers and --swift were supplied. Only one can be supplied per run. Please adjust the parameters."
+    exit(1)
+}
+else if ((params.swift != false && params.noPicard != false) || (params.primers != false && params.noPicard != false)) {
+    // If a primer file is supplied to either --swift or --primers
+    // then the --noPicard option is not needed. Notify the user
+    // and exit.
+    println "ERROR: When the --swift or --primers options are supplied. The --noPicard option is not needed. Please remove this option."
     exit(1)
 }
 else if (params.swift != false) {
@@ -231,6 +252,9 @@ else if (params.swift != false) {
         // a file object.
         primerfile = file(params.swift)
         primerFileName = primerfile.getName()
+        
+        // Set the picardUsed variable to false (for analysis parameters file)
+        picardUsed = 'False'
     }
     else {
         // If the file does not exist, notify the user and exit.
@@ -248,6 +272,9 @@ else if (params.primers != false) {
         primerfile = file(params.primers)
         primerFileName = primerfile.getName()
 
+        // Set the picardUsed variable to false (for analysis parameters file)
+        picardUsed = 'False'
+
         // iVar requires a bed file containing primers and coordiantes. Check to ensure
         // that the provided file ends in .bed, and if not notify the user and exit.
         if (primerfile.getExtension() != 'bed') {
@@ -260,6 +287,12 @@ else if (params.primers != false) {
         println "ERROR: ${params.primers} does not exist."
         exit(1)
     }
+}
+else if (params.noPicard != false) {
+    // If the noPicard flag was provided, set the picardUsed variable to false
+    // (for analysis parameters file)
+    picardUsed = 'False'
+
 }
 
 // Parses the host options (--host_reference and --host_bt2_index).
@@ -327,7 +360,7 @@ else {
 }
 
 // Creates the summary header based on the options provided.
-summaryHeader = createSummaryHeader(params.host_reference, params.host_bt2_index, params.primers, params.swift)
+summaryHeader = createSummaryHeader(params.host_reference, params.host_bt2_index, params.primers, params.swift, params.noPicard)
 
 // To keep track of the summary, a string will be passed between modules that report
 // metrics. At the end of the module, the metric will be added to the string and
@@ -335,7 +368,7 @@ summaryHeader = createSummaryHeader(params.host_reference, params.host_bt2_index
 workflow {
 
     // Creates a parameters and summary file.
-    Setup( refName, params.minLen, params.minCov, primerFileName, hostRefName, summaryHeader, outDir )
+    Setup( refName, params.minLen, params.minCov, params.minBQ, params.minMapQ, picardUsed, primerFileName, hostRefName, summaryHeader, outDir )
 
     // Index the reference file provided.
     IndexReference( refData, outDir, params.threads )
@@ -384,7 +417,7 @@ workflow {
         SwiftPrimerClip( Realignment.out[0], primerfile, outDir, params.threads, Realignment.out[1] )
 
         // Call and filter variants
-        CallVariants( SwiftPrimerClip.out[0], baseDir, outDir, refData, params.minCov, SwiftPrimerClip.out[1] )
+        CallVariants( SwiftPrimerClip.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, SwiftPrimerClip.out[1] )
     }
     /*
 
@@ -402,6 +435,13 @@ workflow {
     }
     */
     // The user did not supply the swift option
+    else if (params.noPicard) {
+        // Perform Realignment to improve indel quality
+        Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads, Bowtie2Alignment.out[2])
+
+        // Call and filter variants
+        CallVariants( Realignment.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, Realignment.out[1] )
+    }
     else {
         // Mark duplicates using picard
         MarkDuplicates( Bowtie2Alignment.out[0], outDir, Bowtie2Alignment.out[2] )
@@ -410,11 +450,11 @@ workflow {
         Realignment( MarkDuplicates.out[0], outDir, refData, params.threads, MarkDuplicates.out[1] ) 
 
         // Call and filter variants
-        CallVariants( Realignment.out[0], baseDir, outDir, refData, params.minCov, Realignment.out[1] )
+        CallVariants( Realignment.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, Realignment.out[1] )
     }
 
     // Generate a consensus from the alignment and variant calling.
-    GenerateConsensus( CallVariants.out[0], baseDir, outDir, refData, params.minCov, CallVariants.out[2] )
+    GenerateConsensus( CallVariants.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, CallVariants.out[2] )
 
     WriteSummary(GenerateConsensus.out[1], outDir)
 }

@@ -11,6 +11,14 @@ process Setup {
         // The minimum coverage depth used for masking
         // the consensus genome.
         val minCov
+        // The minimum base call quality for a site to be considered
+        // in both variant calling and depth masking
+        val minBQ
+        // The minimum mapping quality for a site to be considered in
+        // both variant calling and depth masking
+        val minMapQ
+        // Whether picard was used or not.
+        val picardUsed
         // The name of the primer file if supplied.
         // If no file was supplied, the value will be NONE
         val primerFileName
@@ -41,8 +49,11 @@ process Setup {
         1. The name of the reference supplied
         2. The minimum read length allowed after trimmming
         3. The minimum coverage threshold used for masking
-        5. The name of the primer file (if provided)
-        6. The name of the host reference used (if provided)
+        4. The minimum base call quality used for variant calling and masking
+        5. The minimum mapping quality used for variant calling and masking.
+        6. Whether picard was used in the anlaysis.
+        7. The name of the primer file (if provided)
+        8. The name of the host reference used (if provided)
 
     The summary file will always contain:
         1. The sample
@@ -65,8 +76,11 @@ process Setup {
 
     echo "Minimum Read Length Allowed : ${minLen} bp" >> analysis-parameters.txt
     echo "Minimum Coverage Allowed : ${minCov}" >> analysis-parameters.txt
+    echo "Minimum Base Call Quality Allowed: ${minBQ}" >> analysis-parameters.txt
+    echo "Minimum Read Mapping Quality Allowed: ${minMapQ}" >> analysis-parameters.txt
     echo "Reference Supplied : ${refName}" >> analysis-parameters.txt
     echo "Primers Supplied : ${primerFileName}" >> analysis-parameters.txt
+    echo "Deduplication with Picard Performed : ${picardUsed}" >> analysis-parameters.txt
     echo "Host Removal : ${hostRefName}" >> analysis-parameters.txt
 
     touch stats-summary.csv
@@ -486,6 +500,12 @@ process CallVariants {
         tuple val(refName), file(ref)
         // The minimum coverage cutoff
         val minCov
+        // The minimum base call quality for a site to be
+        // used in variant calling
+        val minBQ
+        // The minimum mapping quality for a site to be used in variant
+        // calling
+        val minMapQ
         // The existing summary string.
         val existingSummary
     output:
@@ -525,7 +545,7 @@ process CallVariants {
     #!/bin/bash
 
     samtools index ${bam}
-    freebayes -f ${ref} ${bam} > ${base}.vcf
+    freebayes -q ${minBQ} -m ${minMapQ} -f ${ref} ${bam} > ${base}.vcf
 
     python3 ${baseDir}/scripts/fix_multi_allelic.py -i ${base}.vcf -o ${base}-biallelic.vcf
 
@@ -561,6 +581,12 @@ process GenerateConsensus {
         tuple val(refName), file(ref)
         // The minimum coverage threshold
         val minCov
+        // The minimum base call quality for a site to be considered in
+        // depth masking
+        val minBQ
+        // The minimum mapping quality for a site to be used in variant
+        // calling
+        val minMapQ
         // The existing summary string.
         val existingSummary
     output:
@@ -611,10 +637,10 @@ process GenerateConsensus {
     """
     #!/bin/bash
 
-    samtools mpileup --no-BAQ -d 100000 -x -A -f ${ref} ${bam} > ${base}.pileup
+    samtools mpileup --no-BAQ -d 100000 -x -A -q ${minMapQ} -Q ${minBQ} -f ${ref} ${bam} > ${base}.pileup
     python3 ${baseDir}/scripts/pileup_to_bed.py -i ${base}.pileup -o passed-sites.bed --minCov ${minCov}
 
-    samtools mpileup --no-BAQ -d 100000 -x -A -a -f ${ref} ${bam} > all-sites.pileup
+    samtools mpileup --no-BAQ -d 100000 -x -A -q ${minMapQ} -Q ${minBQ} -a -f ${ref} ${bam} > all-sites.pileup
     python3 ${baseDir}/scripts/pileup_to_bed.py -i all-sites.pileup -o all-sites.bed 
 
     bedtools subtract -a all-sites.bed -b passed-sites.bed > ${base}-low-cov-sites.bed
