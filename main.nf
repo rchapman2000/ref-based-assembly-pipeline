@@ -190,12 +190,12 @@ if (params.output == false) {
     exit(1)
 }
 else {
-    // If the parameter is set, ensure that the directory provided ends
-    // in a trailing slash (to keep things consistent throughout) the
-    // pipeline code.
-    outDir = file(checkDirectoryEnding(params.output))
+    // If the parameter is set, convert the value provided to a file type
+    // to get the absolute path, and then convert back to a string to be
+    // used in the pipeline.
+    outDir = file(params.output).toString()
+    println(outDir)
 }
-
 // Checks the reference parameter. For this, we cannot use an
 // input channel like was used for the input files. Using an input channel
 // will cause Nextflow to only iterate once as the reference 

@@ -29,7 +29,7 @@ process Setup {
         // The header to write to the summary file.
         val summaryHeader
         // The output directory to be used.
-        file outDir
+        val outDir
         
     output:
         // The parameters file created.
@@ -95,7 +95,7 @@ process IndexReference {
         // Tuple contains the reference name and reference file.
         tuple val(refName), file(ref)
         // The output directory
-        file outDir
+        val outDir
         // The number of threads provided
         val threads
 
@@ -125,7 +125,7 @@ process QCReport {
         // Tuple contains the file basename as well as the paired-end read files
         tuple val(base), file(F1), file(F2)
         // The output directory
-        file outDir
+        val outDir
         // The name of the directory to place the fastqc output into (allows
         // for this command to be used multiple times and to separate the output
         // i.e. pre-processed-reads vs trimmed-reads.)
@@ -157,7 +157,7 @@ process Trimming {
         // Tuple cotains the file basename as well as the paired-end read files.
         tuple val(base), file(R1), file(R2)
         // The output directory
-        file outDir
+        val outDir
         // The adapter file in fasta format
         file adapters
         // Minimum sequence length to keep
@@ -224,7 +224,7 @@ process Bowtie2Alignment {
         // Tuple contains the file basename and paired-end reads
         tuple val(base), file(R1), file(R2)
         // The output directory name
-        file outDir
+        val outDir
         // Tuple contains the bowtie2 index directory and the name of the reference used
         tuple file(refDir), val(refName)
         // The number of threads provided.
@@ -271,7 +271,7 @@ process HostReadRemoval {
         // Tuple contains the file basename and paired-end reads
         tuple val(base), file(R1), file(R2)
         // The output directory name
-        file outDir
+        val outDir
         // Tuple contains the bt2 index directory and basename of the index files.
         tuple file(refDir), val(refName)
         // The number of threads provided.
@@ -330,7 +330,7 @@ process SwiftPrimerClip {
         // The primer masterfile for input into primerclip.
         file primersFile
         // The output directory
-        file outDir
+        val outDir
         // THe number of threads provided
         val threads
         // The existing statistics string to be added to.
@@ -380,7 +380,7 @@ process BedPrimerClip {
 
         file primersFile
 
-        file outDir
+        val outDir
 
         val threads
 
@@ -406,7 +406,7 @@ process MarkDuplicates {
         // Tuple contains the file basename and alignment bam file
         tuple val(base), file(bam)
         // The output directory name
-        file outDir
+        val outDir
         // The existing summary string.
         val existingSummary
     output:
@@ -449,7 +449,7 @@ process Realignment {
         // Tuple contains the file basename and the alignment bam file
         tuple val(base), file(bam)
         // The output directory name
-        file outDir
+        val outDir
         // Tuple contains the reference file name and reference fasta file
         tuple val(refName), file(ref)
         // The number of threads provided
@@ -495,7 +495,7 @@ process CallVariants {
         // The script base directory name (to call python scripts)
         val baseDir
         // The output directory name
-        file outDir
+        val outDir
         // Tuple contains the reference name and reference fasta file
         tuple val(refName), file(ref)
         // The minimum coverage cutoff
@@ -576,7 +576,7 @@ process GenerateConsensus {
         // The name of the base directory
         val baseDir
         // The name of the base directory
-        file outDir
+        val outDir
         // Tuple contains the reference file name and reference file
         tuple val(refName), file(ref)
         // The minimum coverage threshold
@@ -680,7 +680,7 @@ process WriteSummary {
         // is the only value important to this function).
         val summary
         // The output directory.
-        file outDir
+        val outDir
 
     script:
     /*
