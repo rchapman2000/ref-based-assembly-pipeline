@@ -628,6 +628,11 @@ process GenerateConsensus {
     an N character and will not match the VCF reference). Thus, the pipeline uses bcftools to create a bed file for all indel sites,
     and then subtracts these from the low coverage sites. Now, this results in the sites to mask.
 
+    If there are no reads that aligned to the reference genome, then there will be no positions present in the
+    pileup file, leading to 0 masked positions being capture and resulting in a full-coverage genome. Thus, we
+    handle this by checking whether the bed file containing all sites is empty. If, so then we create a bed file containing 
+    the coordinates of the reference.
+
     The bedtools maskfasta command is then used to mask the reference at these positions.
 
     Then the variants are applied to the mask fasta. The reason this is done after masking is 
