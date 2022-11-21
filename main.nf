@@ -129,6 +129,7 @@ params.primers = false
 params.threads = 1
 params.minCov = 20
 params.minLen = 75
+params.trimQualThreshold = 20
 params.minBQ = 10
 params.minMapQ = 0
 params.noPicard = false
@@ -368,7 +369,7 @@ summaryHeader = createSummaryHeader(params.host_reference, params.host_bt2_index
 workflow {
 
     // Creates a parameters and summary file.
-    Setup( refName, params.minLen, params.minCov, params.minBQ, params.minMapQ, picardUsed, primerFileName, hostRefName, summaryHeader, outDir )
+    Setup( refName, params.minLen, params.trimQualThreshold, params.minCov, params.minBQ, params.minMapQ, picardUsed, primerFileName, hostRefName, summaryHeader, outDir )
 
     // Index the reference file provided.
     IndexReference( refData, outDir, params.threads )
@@ -377,7 +378,7 @@ workflow {
     QCReport( inputFiles_ch, outDir, "FASTQC-Pre-Processing", params.threads )
 
     // Perform adapter and quality trimming with trimmomatic.
-    Trimming( inputFiles_ch, outDir, adapters, params.minLen )
+    Trimming( inputFiles_ch, outDir, adapters, params.minLen, params.trimQualThreshold )
 
     // Use FASTQC to perform a QC check on the trimmed reads
     QCReport_Trimmed( Trimming.out[0], outDir, "FASTQC-Trimmed", params.threads )

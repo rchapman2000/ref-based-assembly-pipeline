@@ -8,6 +8,9 @@ process Setup {
         // The minimum read length allowed post trimmming (for
         // use in the parameters file)
         val minLen
+        // The threshold below which a read is trimmed while
+        // performing sliding window trimming
+        val trimQualThreshold
         // The minimum coverage depth used for masking
         // the consensus genome.
         val minCov
@@ -75,6 +78,7 @@ process Setup {
     touch analysis-parameters.txt
 
     echo "Minimum Read Length Allowed : ${minLen} bp" >> analysis-parameters.txt
+    echo "Trimming Quality Threshold : ${trimQualThreshold}" >> analysis-parameters.txt
     echo "Minimum Coverage Allowed : ${minCov}" >> analysis-parameters.txt
     echo "Minimum Base Call Quality Allowed: ${minBQ}" >> analysis-parameters.txt
     echo "Minimum Read Mapping Quality Allowed: ${minMapQ}" >> analysis-parameters.txt
@@ -162,6 +166,9 @@ process Trimming {
         file adapters
         // Minimum sequence length to keep
         val minLen
+        // The threshold below which a read is trimmed while
+        // performing sliding window trimming
+        val trimQualThreshold
     output:
         // Tuple containing the file basename and the trimmed forward and reverse reads
         tuple val(base), file("${base}_1.trimmed.fq.gz"), file("${base}_2.trimmed.fq.gz")
@@ -204,7 +211,7 @@ process Trimming {
 
     trimmomatic PE ${R1} ${R2} ${base}_1.trimmed.fq ${base}_1.unpaired.fq \
     ${base}_2.trimmed.fq ${base}_2.unpaired.fq ILLUMINACLIP:${adapters}:2:30:10:1:true \
-    LEADING:5 TRAILING:5 SLIDINGWINDOW:4:20 MINLEN:${minLen}
+    LEADING:5 TRAILING:5 SLIDINGWINDOW:4:${trimQualThreshold} MINLEN:${minLen}
     
     gzip ${base}_1.trimmed.fq ${base}_1.unpaired.fq ${base}_2.trimmed.fq ${base}_2.unpaired.fq
 
@@ -643,13 +650,17 @@ process GenerateConsensus {
     samtools mpileup --no-BAQ -d 100000 -x -A -q ${minMapQ} -Q ${minBQ} -a -f ${ref} ${bam} > all-sites.pileup
     python3 ${baseDir}/scripts/pileup_to_bed.py -i all-sites.pileup -o all-sites.bed 
 
-    bedtools subtract -a all-sites.bed -b passed-sites.bed > ${base}-low-cov-sites.bed
+    if [[ -s all-sites.bed ]]; then
+        bedtools subtract -a all-sites.bed -b passed-sites.bed > ${base}-low-cov-sites.bed
 
-    bcftools query -f'%CHROM\t%POS0\t%END\n' ${indels} > indel-sites.bed
+        bcftools query -f'%CHROM\t%POS0\t%END\n' ${indels} > indel-sites.bed
 
-    bedtools subtract -a ${base}-low-cov-sites.bed -b indel-sites.bed > ${base}-mask-sites.bed
+        bedtools subtract -a ${base}-low-cov-sites.bed -b indel-sites.bed > ${base}-mask-sites.bed
+    else
+        bioawk -c fastx '{print \$name"\t0\t"length(\$seq)}' ${ref} > ${base}-mask-sites.bed
+    fi
 
-    num_mask=\$(cat ${base}-mask-sites.bed | wc -l)
+    num_mask=\$(bioawk -c bed 'BEGIN{SITES=0} {SITES+=\$end-\$start } END{print SITES}' ${base}-mask-sites.bed)
 
     bedtools maskfasta -fi ${ref} -bed ${base}-mask-sites.bed -fo masked.fasta
 
