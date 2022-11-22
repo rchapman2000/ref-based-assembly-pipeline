@@ -16,7 +16,7 @@ K03455.1        2911    .       ATG     CCA,GCA,ACA,ACG,ATA     10482.7 .       
 This script uses the AO field (Alternative allele appearances) to identify the **most prevalent alternative allele** (ACA in the previous example has an AO value of 310 and is thus the most prevalent). Also note that the **genotype field is removed** by this script as these values are not important for downstream processing.
 ## Installation
 
-To install this pipeline enter the following commands:
+To install this pipeline, enter the following commands:
 ```
 # Clone the repository
 git clone https://github.com/rchapman2000/ref-based-assembly-pipeline.git
@@ -33,7 +33,7 @@ If you already have the pipeline installed, you can update it using the followin
 # Navigate to your installation directory
 cd ref-based-assembly-pipeline
 
-# Use git pull to get the lastest update
+# Use git pull to get the latest update
 git pull
 
 # Activate the conda environment and use the environment.yml file to download updates

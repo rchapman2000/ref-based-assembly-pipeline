@@ -106,7 +106,7 @@ def createSummaryHeader (hostRef, hostIdx, primers, swift, noPicard) {
 
     // Finally, the pipeline will always report the number of SNPs, indels, masking positions,
     // and coverage.
-    FinalHeader = FinalHeader + "SNPs,Indels,Masked Positions,Coverage"
+    FinalHeader = FinalHeader + "Average Read Depth,SNPs,Indels,Masked Positions,Coverage"
 
     return FinalHeader
 }

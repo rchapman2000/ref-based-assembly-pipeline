@@ -63,10 +63,11 @@ process Setup {
         2. Raw Reads
         3. Reads after trimming
         4. Mapped reads
-        5. SNPs passing filtering
-        6. Indels passing filtering
-        7. sites masked
-        8. coverage
+        5. Average Read Depth
+        6. SNPs passing filtering
+        7. Indels passing filtering
+        8. sites masked
+        9. coverage
     As well, depending on the user's options, the summary file may contain:
         - Reads after host removal
         - mapped, deduped reads
@@ -527,7 +528,7 @@ process CallVariants {
 
     script:
     /*
-    Beings by indexing the bam file using samtools.
+    Beings by calculating the average read depth and indexing the bam file using samtools.
 
     Next, variants are called using freebayes. Freebayes can produce multiallelic
     variants (variants were multiple alternative alleles are provided). Thus, a 
@@ -551,6 +552,8 @@ process CallVariants {
     """
     #!/bin/bash
 
+    average_read_depth=\$(samtools depth -a -J -q 0 -Q 0 ${bam} | awk -F'\t' 'BEGIN{totalCov=0} {totalCov+=\$3} END{print totalCov/NR}')
+
     samtools index ${bam}
     freebayes -q ${minBQ} -m ${minMapQ} -f ${ref} ${bam} > ${base}.vcf
 
@@ -570,7 +573,7 @@ process CallVariants {
     bcftools view -i "(INFO/DP >= ${minCov}) && ((INFO/AO / INFO/DP) > (INFO/RO / INFO/DP))" ${base}-snps.vcf.gz > ${base}-snps-filtered.vcf
     num_snps=\$(grep -v "^#" ${base}-snps-filtered.vcf | wc -l)
 
-    summary="${existingSummary},\$num_snps,\$num_indels"
+    summary="${existingSummary},\$average_read_depth,\$num_snps,\$num_indels"
     """
 }
 
