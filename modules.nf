@@ -686,7 +686,7 @@ process GenerateConsensus {
 
     seq_len=\$(bioawk -c fastx '{ print length(\$seq) }' < ${base}-consensus.fasta)
 
-    coverage=\$(awk -v mask=\$num_mask -v len=\$seq_len 'BEGIN { print (1 - (mask / len)) * 100 }')
+    coverage=\$(python3 ${baseDir}/scripts/calculate_genome_coverage.py -i ${base}-consensus.fasta)
 
     summary="${existingSummary},\$num_mask,\$coverage"
     """
