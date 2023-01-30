@@ -137,7 +137,7 @@ params.host_bt2_index = false
 params.host_reference = false
 
 // Imports the adapters file present in the installation directory.
-adapters = file("${baseDir}/adapters.fa")
+adapters = file("${baseDir}/data/adapters.fa")
 
 println "Input Directory: ${params.input}"
 
