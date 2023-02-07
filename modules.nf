@@ -331,7 +331,7 @@ process HostReadRemoval {
 
 
 // Soft clips primers from an alignment using primerclip
-process SwiftPrimerClip {
+process XGenPrimerClip {
     input:
         // Tuple contains the file basename and alignment bam file
         tuple val(base), file(bam)

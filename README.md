@@ -53,7 +53,7 @@ The pipeline also supports the following optional arguments:
 
 | Option | Type | Description |
 |---|---|---|
-| --swift | *File* | This pipeline supports the Swift/IDT amplicon panels. If one of their 'masterfiles' (provided with the technology) is supplied to this option, the pipeline will perform primer clipping using the PrimerClip software. |
+| --xgen | *File* | This pipeline supports the IDT xGen amplicon panels. If one of their 'masterfiles' (provided with the technology) is supplied to this option, the pipeline will perform primer clipping using the PrimerClip software. |
 | --host_reference | *FASTA File* | If provided a host fasta file, the pipeline will perform host read removal via alignment (Supplying this option will require a bowtie2 index to be built). |
 | --host_bt2_index | *Directory* | Alternative to providing a fasta file, a pre-built bowtie2 index can be provided for host removal. The index must be in its own directory. |
 | --noPicard | *None* | Supplying this option disables the use of picard (which is used by default). Supplying a primer file will do this automatically. [Default = use picard unless primers supplied] |

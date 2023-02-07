@@ -25,9 +25,9 @@ OPTIONS:
 
 OPTIONAL:
     
-    --primers PRIMER_BED_FILE - Supply a .bed file to perform primer clipping using iVAR (Cannot be used with --swift option)
+    --primers PRIMER_BED_FILE - Supply a .bed file to perform primer clipping using iVAR (Cannot be used with --xgen option)
 
-    --swift PRIMER_MASTER_FILE - Supply a masterfile to perform primer clipping using PrimerClip (for SWIFT/IDT Assays) (Cannot be used with --primers option)
+    --xgen PRIMER_MASTER_FILE - Supply a masterfile to perform primer clipping using PrimerClip (for IDT xGen Assays) (Cannot be used with --primers option)
 
     --host_reference HOST_REF_FASTA - a fasta file containing a host reference sequence. Supplying this option will require a bowtie2 index to be built
 
@@ -68,7 +68,7 @@ def checkDirectoryEnding (fileName) {
 // supplied by the user. Because the pipeline dynamically changes based on
 // what the user specifies, the summary file must also be alter to reflect
 // the analysis. This will also make incorporating new modules easier.
-def createSummaryHeader (hostRef, hostIdx, primers, swift, noPicard) {
+def createSummaryHeader (hostRef, hostIdx, primers, xgen, noPicard) {
     
     // The header will always start with the sample.
     FinalHeader = 'Sample,'
@@ -88,9 +88,9 @@ def createSummaryHeader (hostRef, hostIdx, primers, swift, noPicard) {
     FinalHeader = FinalHeader + "Mapped Reads,"
 
     // After alignment, the user may supply a set of primers to be clipped. Thus,
-    // if the primers or swift parameters have been supplied, a field for the number of
+    // if the primers or xgen parameters have been supplied, a field for the number of
     // clipped mapped reads will be added.
-    if (primers != false || swift != false) {
+    if (primers != false || xgen != false) {
         FinalHeader = FinalHeader + "Clipped Mapped Reads,"
     }
     // If the user has supplied the noPicard option, then do not add anything to the summary header.
@@ -124,7 +124,7 @@ if (params.help){
 params.input = false
 params.reference = false
 params.output = false
-params.swift = false
+params.xgen = false
 params.primers = false
 params.threads = 1
 params.minCov = 20
@@ -150,7 +150,7 @@ include { QCReport as QCReport_Trimmed } from './modules.nf'
 include { Trimming } from './modules.nf'
 include { HostReadRemoval } from './modules.nf'
 include { Bowtie2Alignment } from './modules.nf'
-include { SwiftPrimerClip } from './modules.nf'
+include { XGenPrimerClip } from './modules.nf'
 //include { BedPrimerClip } from './modules.nf'
 include { MarkDuplicates } from './modules.nf'
 include { Realignment } from './modules.nf'
@@ -235,29 +235,29 @@ else {
 }
 
 
-// Process the --swift, --primers, and/or --noPicard parameters.
+// Process the --xgen, --primers, and/or --noPicard parameters.
 primerfile = ''
 primerFileName = 'NONE'
 picardUsed = 'True'
-if (params.swift != false && params.primers != false) {
-    // Both the --swift and --primers options cannot be provided. If they are,
+if (params.xgen != false && params.primers != false) {
+    // Both the --xgen and --primers options cannot be provided. If they are,
     // notify the user and exit.
-    println "ERROR: Both --primers and --swift were supplied. Only one can be supplied per run. Please adjust the parameters."
+    println "ERROR: Both --primers and --xgen were supplied. Only one can be supplied per run. Please adjust the parameters."
     exit(1)
 }
-else if ((params.swift != false && params.noPicard != false) || (params.primers != false && params.noPicard != false)) {
-    // If a primer file is supplied to either --swift or --primers
+else if ((params.xgen != false && params.noPicard != false) || (params.primers != false && params.noPicard != false)) {
+    // If a primer file is supplied to either --xgen or --primers
     // then the --noPicard option is not needed. Notify the user
     // and exit.
-    println "ERROR: When the --swift or --primers options are supplied. The --noPicard option is not needed. Please remove this option."
+    println "ERROR: When the --xgen or --primers options are supplied. The --noPicard option is not needed. Please remove this option."
     exit(1)
 }
-else if (params.swift != false) {
-    // If the --swift parameter is provided, check if the file exists.
-    if (file(params.swift).isFile()) {
+else if (params.xgen != false) {
+    // If the --xgen parameter is provided, check if the file exists.
+    if (file(params.xgen).isFile()) {
         // If the file does exist, parse it into
         // a file object.
-        primerfile = file(params.swift)
+        primerfile = file(params.xgen)
         primerFileName = primerfile.getName()
         
         // Set the picardUsed variable to false (for analysis parameters file)
@@ -265,7 +265,7 @@ else if (params.swift != false) {
     }
     else {
         // If the file does not exist, notify the user and exit.
-        println "ERROR: ${params.swift} does not exist."
+        println "ERROR: ${params.xgen} does not exist."
         exit(1)
     }
 }
@@ -367,7 +367,7 @@ else {
 }
 
 // Creates the summary header based on the options provided.
-summaryHeader = createSummaryHeader(params.host_reference, params.host_bt2_index, params.primers, params.swift, params.noPicard)
+summaryHeader = createSummaryHeader(params.host_reference, params.host_bt2_index, params.primers, params.xgen, params.noPicard)
 
 // To keep track of the summary, a string will be passed between modules that report
 // metrics. At the end of the module, the metric will be added to the string and
@@ -415,16 +415,16 @@ workflow {
         Bowtie2Alignment( Trimming.out[0], outDir, IndexReference.out, params.threads, Trimming.out[2] )
     }
 
-    // If the user supplied the swift option
-    if (params.swift) {
+    // If the user supplied the xgen option
+    if (params.xgen) {
         // Perform realignment to improve indel quality
         Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads, Bowtie2Alignment.out[2])
         
         // Perform primer clipping using primerclip
-        SwiftPrimerClip( Realignment.out[0], primerfile, outDir, params.threads, Realignment.out[1] )
+        XGenPrimerClip( Realignment.out[0], primerfile, outDir, params.threads, Realignment.out[1] )
 
         // Call and filter variants
-        CallVariants( SwiftPrimerClip.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, SwiftPrimerClip.out[1] )
+        CallVariants( XGenPrimerClip.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, XGenPrimerClip.out[1] )
     }
     /*
 
@@ -441,7 +441,7 @@ workflow {
         CallVariants( IVarPrimerClip.out, baseDir, outDir, refData, params.minCov )
     }
     */
-    // The user did not supply the swift option
+    // The user did not supply the xgen option
     else if (params.noPicard) {
         // Perform Realignment to improve indel quality
         Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads, Bowtie2Alignment.out[2])
