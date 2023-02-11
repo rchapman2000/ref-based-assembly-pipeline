@@ -213,6 +213,30 @@ process Trimming {
     trimmomatic PE ${R1} ${R2} ${base}_1.trimmed.fq ${base}_1.unpaired.fq \
     ${base}_2.trimmed.fq ${base}_2.unpaired.fq ILLUMINACLIP:${adapters}:2:30:10:1:true \
     LEADING:5 TRAILING:5 SLIDINGWINDOW:4:${trimQualThreshold} MINLEN:${minLen}
+
+    if [ ! -f ${base}_1.trimmed.fq ]; then
+
+        touch ${base}_1.trimmed.fq
+
+    fi
+
+    if [ ! -f ${base}_2.trimmed.fq ]; then
+
+        touch ${base}_2.trimmed.fq
+
+    fi
+
+    if [ ! -f ${base}_1.unpaired.fq ]; then
+
+        touch ${base}_1.unpaired.fq
+
+    fi
+
+    if [ ! -f ${base}_2.unpaired.fq ]; then
+
+        touch ${base}_2.unpaired.fq
+
+    fi
     
     gzip ${base}_1.trimmed.fq ${base}_1.unpaired.fq ${base}_2.trimmed.fq ${base}_2.unpaired.fq
 
@@ -648,6 +672,10 @@ process GenerateConsensus {
     and subtracting the masked positions divided by the length from 1 using awk.
 
     The number of masked sites and coverage are then added to the summary string. 
+
+    Previous Code:
+    samtools mpileup --no-BAQ -d 100000 -x -A -q ${minMapQ} -Q ${minBQ} -a -f ${ref} ${bam} > all-sites.pileup
+    python3 ${baseDir}/scripts/pileup_to_bed.py -i all-sites.pileup -o all-sites.bed 
     */
     """
     #!/bin/bash
@@ -655,8 +683,7 @@ process GenerateConsensus {
     samtools mpileup --no-BAQ -d 100000 -x -A -q ${minMapQ} -Q ${minBQ} -f ${ref} ${bam} > ${base}.pileup
     python3 ${baseDir}/scripts/pileup_to_bed.py -i ${base}.pileup -o passed-sites.bed --minCov ${minCov}
 
-    samtools mpileup --no-BAQ -d 100000 -x -A -q ${minMapQ} -Q ${minBQ} -a -f ${ref} ${bam} > all-sites.pileup
-    python3 ${baseDir}/scripts/pileup_to_bed.py -i all-sites.pileup -o all-sites.bed 
+    bioawk -c fastx '{print \$name"\t0\t"length(\$seq)}' ${ref} > all-sites.bed
 
     if [[ -s all-sites.bed ]]; then
         bedtools subtract -a all-sites.bed -b passed-sites.bed > ${base}-low-cov-sites.bed
