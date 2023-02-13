@@ -709,7 +709,7 @@ process GenerateConsensus {
 
     bcftools consensus -f with-snps.fasta ${indels}.gz > with-indels-snps.fasta
     
-    bioawk -c fastx '{ gsub(/\\n/,"",seq); print ">${base}"; print \$seq }' with-indels-snps.fasta > ${base}-consensus.fasta
+    bioawk -c fastx '{ gsub(/\\n/,"",seq); print ">${base}-"\$name; print \$seq }' with-indels-snps.fasta > ${base}-consensus.fasta
 
     seq_len=\$(bioawk -c fastx '{ print length(\$seq) }' < ${base}-consensus.fasta)
 
