@@ -3,7 +3,7 @@
 This pipeline automates the process of creating a reference-based assembly from Illumina NGS Data. It supports the processing of both typical and amplicon sequencing approaches (depending on the options provided).
 
 ## Technical Considerations
-Some aspects of this analysis are important to consider and understand when interpretting the output.
+Some aspects of this analysis are important to consider and understand when interpreting the output.
 
 ### Variant Calling
 This pipeline calls majority variants. Thus, the variant allele must be applied in the final consensus so long as it is more prevalent than the reference allele.
@@ -25,7 +25,7 @@ git clone https://github.com/rchapman2000/ref-based-assembly-pipeline.git
 conda env create -f environment.yml
 
 # Activate the conda environment
-conda activate RefBasedAssenmbly
+conda activate RefBasedAssembly
 ```
 ### Updating the Pipeline
 If you already have the pipeline installed, you can update it using the following commands:

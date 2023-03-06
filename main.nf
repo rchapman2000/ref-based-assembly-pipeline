@@ -418,10 +418,10 @@ workflow {
     // If the user supplied the xgen option
     if (params.xgen) {
         // Perform realignment to improve indel quality
-        Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads, Bowtie2Alignment.out[2])
+        //Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads, Bowtie2Alignment.out[2])
         
         // Perform primer clipping using primerclip
-        XGenPrimerClip( Realignment.out[0], primerfile, outDir, params.threads, Realignment.out[1] )
+        XGenPrimerClip( Bowtie2Alignment.out[0], primerfile, outDir, params.threads, Bowtie2Alignment.out[2] )
 
         // Call and filter variants
         CallVariants( XGenPrimerClip.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, XGenPrimerClip.out[1] )
@@ -444,20 +444,20 @@ workflow {
     // The user did not supply the xgen option
     else if (params.noPicard) {
         // Perform Realignment to improve indel quality
-        Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads, Bowtie2Alignment.out[2])
+        //Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads, Bowtie2Alignment.out[2])
 
         // Call and filter variants
-        CallVariants( Realignment.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, Realignment.out[1] )
+        CallVariants( Bowtie2Alignment.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, Bowtie2Alignment.out[2] )
     }
     else {
         // Mark duplicates using picard
         MarkDuplicates( Bowtie2Alignment.out[0], outDir, Bowtie2Alignment.out[2] )
 
         // Perform Realignment to improve indel quality
-        Realignment( MarkDuplicates.out[0], outDir, refData, params.threads, MarkDuplicates.out[1] ) 
+        //Realignment( MarkDuplicates.out[0], outDir, refData, params.threads, MarkDuplicates.out[1] ) 
 
         // Call and filter variants
-        CallVariants( Realignment.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, Realignment.out[1] )
+        CallVariants( Bowtie2Alignment.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, Bowtie2Alignment.out[2] )
     }
 
     // Generate a consensus from the alignment and variant calling.
