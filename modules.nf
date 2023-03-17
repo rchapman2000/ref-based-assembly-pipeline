@@ -205,8 +205,8 @@ process Trimming {
     """
     #!/bin/bash
 
-    raw_reads_1=\$((\$(gunzip -c ${R1} | wc -l)/4))
-    raw_reads_2=\$((\$(gunzip -c ${R1} | wc -l)/4))
+    raw_reads_1=\$((\$(zcat -f ${R1} | wc -l)/4))
+    raw_reads_2=\$((\$(zcat -f ${R2} | wc -l)/4))
 
     total_raw=\$((\$raw_reads_1 + \$raw_reads_2))
 
@@ -380,12 +380,15 @@ process XGenPrimerClip {
     Primerclips takes a namesorted alignment in sam format. Thus, the first
     step uses samtools to convert the alignment bam to that format.
 
-    Then, primerclip is run to softclip primers from the alignment.
+    If no reads aligned, primerclip will output an empty file, causing the pipeline
+    to crash during later steps (because this cannot be converted back into a "bam" file).
+    Thus, we can avoid this by checking whether the sam file contains any alignments. If not,
+    we can skip the primer clipping step and cat the header into a new file. Since there are no
+    reads, this will not bias any data. 
 
+    If reads were aligned, primerclip is run to softclip primers from the alignment.
     The primerclip output is converted back to bam format and sorted using
-    samtools.
-
-    Samtools is then used to grab the number of reads from the clipped
+    samtools. Samtools is then used to grab the number of reads from the clipped
     bam file.
 
     The number of clipped, mapped reads is added to the summary string.
@@ -395,7 +398,13 @@ process XGenPrimerClip {
 
     samtools view -bS ${bam} | samtools sort -@ ${threads} -n -O sam > ${base}-sort.sam
 
-    primerclip ${primersFile} ${base}-sort.sam ${base}-clip.sam
+    if [[ \$(grep -v "^@" ${base}-sort.sam) ]]; then
+
+        primerclip ${primersFile} ${base}-sort.sam ${base}-clip.sam
+    
+    else
+        cat ${base}-sort.sam > ${base}-clip.sam
+    fi
 
     samtools view -b ${base}-clip.sam | samtools sort -@ ${threads} > ${base}-clipped-sorted.bam
     
@@ -406,11 +415,15 @@ process XGenPrimerClip {
 }
 
 /*
-process BedPrimerClip {
+process SamtoolsPrimerClip {
     input:
         tuple val(base), file(bam)
 
-        file primersFile
+        file primers
+
+        val removeUnclippedParam
+
+        val minLen
 
         val outDir
 
