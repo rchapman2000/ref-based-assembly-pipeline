@@ -33,6 +33,8 @@ OPTIONAL:
 
     --host_bt2_index INDEX_DIRECTORY - To save time, an existing bowtie2 index can be supplied. Must be in its own directory
 
+    --localAlignment - Supplying this option enables bowtie2's local alignment mode (will be used for host removal if that option is supplied as well) [Default = end-to-end mode]
+
     --noPicard - Supplying this option disables the use of picard (which is used by default). Supplying a primer file will do this automatically. [Default = use picard unless primers supplied]
 
     --minCov INT - The minimum coverage below which a position will be masked [Default = 20]
@@ -127,6 +129,7 @@ params.output = false
 params.xgen = false
 params.primers = false
 params.threads = 1
+params.localAlignment = false
 params.minCov = 20
 params.minLen = 75
 params.trimQualThreshold = 20
@@ -302,6 +305,15 @@ else if (params.noPicard != false) {
 
 }
 
+// Parses the --localAlignment Parameter
+alignmentParam = "--end-to-end"
+alignmentModeSummary = "End-to-End Alignment Mode"
+if (params.localAlignment != false) {
+    alignmentParam = "--local"
+    alignmentModeSummary = "Local Alignment Mode"
+}
+
+
 // Parses the host options (--host_reference and --host_bt2_index).
 // Again, we cannot use a channel like we did for the input files
 // because then Nextfow would only run other modules once.
@@ -375,7 +387,7 @@ summaryHeader = createSummaryHeader(params.host_reference, params.host_bt2_index
 workflow {
 
     // Creates a parameters and summary file.
-    Setup( refName, params.minLen, params.trimQualThreshold, params.minCov, params.minBQ, params.minMapQ, picardUsed, primerFileName, hostRefName, summaryHeader, outDir )
+    Setup( refName, params.minLen, params.trimQualThreshold, params.minCov, params.minBQ, params.minMapQ, picardUsed, alignmentModeSummary, primerFileName, hostRefName, summaryHeader, outDir )
 
     // Index the reference file provided.
     IndexReference( refData, outDir, params.threads )
@@ -393,10 +405,10 @@ workflow {
     if (params.host_bt2_index != false) {
         
         // Perform host removal by aligning to the host reference using bowtie2
-        HostReadRemoval( Trimming.out[0], outDir, hostRefIdxData, params.threads, Trimming.out[2])
+        HostReadRemoval( Trimming.out[0], outDir, hostRefIdxData, alignmentParam, params.threads, Trimming.out[2])
 
         // Align the non-host reads to the reference using bowtie2
-        Bowtie2Alignment( HostReadRemoval.out[0], outDir, IndexReference.out, params.threads, HostReadRemoval.out[2] )
+        Bowtie2Alignment( HostReadRemoval.out[0], outDir, IndexReference.out, alignmentParam, params.threads, HostReadRemoval.out[2] )
     }
     // If the user supplied a host fasta file
     else if (params.host_reference != false) {
@@ -405,14 +417,14 @@ workflow {
         IndexHostReference( hostRefData, outDir, params.threads )
         
         // Perform host removal by aligning to the host reference using bowtie2
-        HostReadRemoval( Trimming.out[0], outDir, IndexHostReference.out, params.threads, Trimming.out[2] )
+        HostReadRemoval( Trimming.out[0], outDir, IndexHostReference.out, alignmentParam, params.threads, Trimming.out[2] )
         
         // Align the non-host reads to the reference using bowtie2
-        Bowtie2Alignment( HostReadRemoval.out[0], outDir, IndexReference.out, params.threads, HostReadRemoval.out[2])
+        Bowtie2Alignment( HostReadRemoval.out[0], outDir, IndexReference.out, alignmentParam, params.threads, HostReadRemoval.out[2])
     }
     else {
         // Align the reads to the reference using bowtie2
-        Bowtie2Alignment( Trimming.out[0], outDir, IndexReference.out, params.threads, Trimming.out[2] )
+        Bowtie2Alignment( Trimming.out[0], outDir, IndexReference.out, alignmentParam, params.threads, Trimming.out[2] )
     }
 
     // If the user supplied the xgen option
@@ -421,7 +433,7 @@ workflow {
         //Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads, Bowtie2Alignment.out[2])
         
         // Perform primer clipping using primerclip
-        XGenPrimerClip( Bowtie2Alignment.out[0], primerfile, outDir, params.threads, Bowtie2Alignment.out[2] )
+        XGenPrimerClip( Bowtie2Alignment.out[0], primerfile, outDir, params.threads, Bowtie2Alignment.out[1] )
 
         // Call and filter variants
         CallVariants( XGenPrimerClip.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, XGenPrimerClip.out[1] )
@@ -447,17 +459,17 @@ workflow {
         //Realignment( Bowtie2Alignment.out[0], outDir, refData, params.threads, Bowtie2Alignment.out[2])
 
         // Call and filter variants
-        CallVariants( Bowtie2Alignment.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, Bowtie2Alignment.out[2] )
+        CallVariants( Bowtie2Alignment.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, Bowtie2Alignment.out[1] )
     }
     else {
         // Mark duplicates using picard
-        MarkDuplicates( Bowtie2Alignment.out[0], outDir, Bowtie2Alignment.out[2] )
+        MarkDuplicates( Bowtie2Alignment.out[0], outDir, Bowtie2Alignment.out[1] )
 
         // Perform Realignment to improve indel quality
         //Realignment( MarkDuplicates.out[0], outDir, refData, params.threads, MarkDuplicates.out[1] ) 
 
         // Call and filter variants
-        CallVariants( Bowtie2Alignment.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, Bowtie2Alignment.out[2] )
+        CallVariants( MarkDuplicates.out[0], baseDir, outDir, refData, params.minCov, params.minBQ, params.minMapQ, MarkDuplicates.out[1] )
     }
 
     // Generate a consensus from the alignment and variant calling.

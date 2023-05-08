@@ -22,6 +22,8 @@ process Setup {
         val minMapQ
         // Whether picard was used or not.
         val picardUsed
+        // The bowtie2 alignment mode used
+        val alignmentMode
         // The name of the primer file if supplied.
         // If no file was supplied, the value will be NONE
         val primerFileName
@@ -51,12 +53,13 @@ process Setup {
     The parameters file contains:
         1. The name of the reference supplied
         2. The minimum read length allowed after trimmming
-        3. The minimum coverage threshold used for masking
-        4. The minimum base call quality used for variant calling and masking
-        5. The minimum mapping quality used for variant calling and masking.
-        6. Whether picard was used in the anlaysis.
-        7. The name of the primer file (if provided)
-        8. The name of the host reference used (if provided)
+        3. The alignment mode used by bowtie2
+        4. The minimum coverage threshold used for masking
+        5. The minimum base call quality used for variant calling and masking
+        6. The minimum mapping quality used for variant calling and masking.
+        7. Whether picard was used in the anlaysis.
+        8. The name of the primer file (if provided)
+        89. The name of the host reference used (if provided)
 
     The summary file will always contain:
         1. The sample
@@ -80,6 +83,7 @@ process Setup {
 
     echo "Minimum Read Length Allowed : ${minLen} bp" >> analysis-parameters.txt
     echo "Trimming Quality Threshold : ${trimQualThreshold}" >> analysis-parameters.txt
+    echo "Bowtie2 Alignment Mode: ${alignmentMode}" >> analysis-parameters.txt
     echo "Minimum Coverage Allowed : ${minCov}" >> analysis-parameters.txt
     echo "Minimum Base Call Quality Allowed: ${minBQ}" >> analysis-parameters.txt
     echo "Minimum Read Mapping Quality Allowed: ${minMapQ}" >> analysis-parameters.txt
@@ -178,7 +182,7 @@ process Trimming {
         // The summary string containing the raw and trimmed read counts for the paired-end sample.
         env summary
 
-    publishDir "${outDir}/${base}-Processed-Reads", mode: 'copy'
+    publishDir "${outDir}/${base}-Intermediate-Files/Processed-Reads", mode: 'copy', pattern: "*.fq.gz"
 
     script:
     /*
@@ -259,6 +263,8 @@ process Bowtie2Alignment {
         val outDir
         // Tuple contains the bowtie2 index directory and the name of the reference used
         tuple file(refDir), val(refName)
+        // The alignment mode parameter
+        val alignmentMode
         // The number of threads provided.
         val threads
         // The existing statistics string to be added to.
@@ -267,12 +273,10 @@ process Bowtie2Alignment {
     output:
         // Tuple contains the file basename and the alignment in a sorted bam file
         tuple val(base), file("${base}.bam")
-        // A directory containing the alignment in sam format.
-        file "${base}-align.sam"
         // The summary string containing the number of mapped reads
         env summary
     
-    publishDir "${outDir}", mode: 'copy'
+    publishDir "${outDir}/${base}-Intermediate-Files/", mode: 'copy', pattern: "${base}.bam"
 
     script:
     /*
@@ -287,7 +291,7 @@ process Bowtie2Alignment {
     """
     #!/bin/bash
 
-    bowtie2 --threads ${threads} -x ${refDir}/${refName} -1 ${R1} -2 ${R2} --local -S ${base}-align.sam
+    bowtie2 --threads ${threads} -x ${refDir}/${refName} -1 ${R1} -2 ${R2} ${alignmentMode} -S ${base}-align.sam
 
     samtools view -b ${base}-align.sam | samtools sort > ${base}.bam
 
@@ -306,6 +310,8 @@ process HostReadRemoval {
         val outDir
         // Tuple contains the bt2 index directory and basename of the index files.
         tuple file(refDir), val(refName)
+        // The alignment mode parameter
+        val alignmentMode
         // The number of threads provided.
         val threads
         // The existing statistics string to be added to.
@@ -318,7 +324,7 @@ process HostReadRemoval {
         // The summary string containing the number of reads post host removal
         env summary
     
-    publishDir "${outDir}/${base}-Processed-Reads", mode: 'copy'
+    publishDir "${outDir}/${base}-Intermediate-Files/Processed-Reads", mode: 'copy', pattern: "*.fq.gz"
 
     script:
     /*
@@ -337,7 +343,7 @@ process HostReadRemoval {
     """
     #!/bin/bash
     mkdir host-reads
-    bowtie2 --threads ${threads} -x ${refDir}/${refName} -1 ${R1} -2 ${R2} --local -S host-reads/${base}-host.sam --un-conc ${base}_host_removed
+    bowtie2 --threads ${threads} -x ${refDir}/${refName} -1 ${R1} -2 ${R2} ${alignmentMode} -S host-reads/${base}-host.sam --un-conc ${base}_host_removed
 
     mv ${base}_host_removed.1 ${base}_host_removed_1.fq
     mv ${base}_host_removed.2 ${base}_host_removed_2.fq
@@ -373,7 +379,7 @@ process XGenPrimerClip {
         // The summary string containing the number of clipped, mapped reads
         env summary
 
-    publishDir "${outDir}", mode: 'copy'
+    publishDir "${outDir}/${base}-Intermediate-Files/", mode: 'copy', pattern: "${base}-clipped-sorted.bam"
 
     script:
     /*
@@ -457,12 +463,12 @@ process MarkDuplicates {
     output:
         // Tuple contains the file basename and alignment bam file with
         // duplicates removed.
-        tuple val(base), file("${base}-align-nodups.bam")
+        tuple val(base), file("${base}-align-deduped.bam")
         // The summary string with the number of deduplicated
         // mapped reads added.
         env summary
 
-    publishDir "${outDir}", mode: 'copy'
+    publishDir "${outDir}/${base}-Intermediate-Files/", mode: 'copy', pattern: "${base}-align-deduped.bam"
 
     script:
     /*
@@ -479,10 +485,10 @@ process MarkDuplicates {
     #!/bin/bash
 
     picard MarkDuplicates I=${bam} \
-    O=${base}-align-nodups.bam M=${base}-dup-metrics.txt ASSUME_SORT_ORDER=coordinate \
+    O=${base}-align-deduped.bam M=${base}-dup-metrics.txt ASSUME_SORT_ORDER=coordinate \
     REMOVE_DUPLICATES=true
 
-    deduped_mapped_reads=\$(samtools view -F 0x04 -c ${base}-align-nodups.bam)
+    deduped_mapped_reads=\$(samtools view -F 0x04 -c ${base}-align-deduped.bam)
 
     summary="${existingSummary},\$deduped_mapped_reads"
     """
@@ -561,7 +567,7 @@ process CallVariants {
         // The summary string with the number of snps and indels added.
         env summary
 
-    publishDir "${outDir}", mode: 'copy'
+    publishDir "${outDir}/${base}-Intermediate-Files/", mode: 'copy', pattern: "*.vcf"
 
     script:
     /*
@@ -644,7 +650,8 @@ process GenerateConsensus {
         // added.
         env summary
 
-    publishDir "${outDir}", mode: 'copy'
+    publishDir "${outDir}", mode: 'copy', pattern: "${base}-consensus.fasta"
+    publishDir "${outDir}/${base}-Intermediate-Files/", mode: 'copy', pattern: "${base}-mask-sites.bed"
 
     script:
     /*

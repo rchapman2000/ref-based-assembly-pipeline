@@ -56,6 +56,7 @@ The pipeline also supports the following optional arguments:
 | --xgen | *File* | This pipeline supports the IDT xGen amplicon panels. If one of their 'masterfiles' (provided with the technology) is supplied to this option, the pipeline will perform primer clipping using the PrimerClip software. |
 | --host_reference | *FASTA File* | If provided a host fasta file, the pipeline will perform host read removal via alignment (Supplying this option will require a bowtie2 index to be built). |
 | --host_bt2_index | *Directory* | Alternative to providing a fasta file, a pre-built bowtie2 index can be provided for host removal. The index must be in its own directory. |
+| --localAlignment | *None* | Supplying this option switches Bowtie2's alignment mode to local alignment (by default, it uses end-to-end mode). For more on this see the bowtie2 manual. [Default = OFF (End-to-end mode)]
 | --noPicard | *None* | Supplying this option disables the use of picard (which is used by default). Supplying a primer file will do this automatically. [Default = use picard unless primers supplied] |
 | --minCov | *int* | The minimum depth of coverage, below which a a position will be masked. [Default = 20] |
 | --minLen | *int* | The minimum length of a read (in base pairs) to keep post trimming. [Default = 75] |
@@ -63,7 +64,7 @@ The pipeline also supports the following optional arguments:
 | --minMapQ | *int* | The minimum mapping quality for a site to be considered in variant calling and depth-masking [Default = 0] |
 | --threads | *int* | The number of threads that can be use to run pipeline tools in parallel. [Default = 1] |
 
-To view the list of options from the commandline, use the following command:
+To view the list of options from the command line, use the following command:
 ```
 nextflow rn main.nf --help
 ```
