@@ -600,7 +600,9 @@ process CallVariants {
     samtools index ${bam}
     freebayes -q ${minBQ} -m ${minMapQ} -f ${ref} ${bam} > ${base}.vcf
 
-    python3 ${baseDir}/scripts/fix_multi_allelic.py -i ${base}.vcf -o ${base}-biallelic.vcf
+    python3 ${baseDir}/scripts/remove_genotype_vcf.py -i ${base}.vcf -o ${base}-no-genotype.vcf
+
+    python3 ${baseDir}/scripts/fix_multi_allelic.py -i ${base}-no-genotype.vcf -o ${base}-biallelic.vcf
 
     vcftools --keep-only-indels --vcf ${base}-biallelic.vcf --recode --recode-INFO-all --stdout > ${base}-indels.vcf
     bgzip ${base}-indels.vcf
